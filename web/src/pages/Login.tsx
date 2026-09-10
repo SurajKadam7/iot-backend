@@ -22,7 +22,7 @@ export function Login({ onSubmit, error }: { onSubmit: LoginHandler; error: stri
       <div className="login-panel">
         <div className="brand login-brand">
           <span className="brand-mark" aria-hidden="true" />
-          <div>
+          <div className="brand-copy">
             <div className="brand-name">IoT Live Feed</div>
             <div className="brand-org">Organization telemetry board</div>
           </div>

@@ -51,7 +51,7 @@ export function Locations() {
   return (
     <section className="page">
       <header className="page-head">
-        <div>
+        <div className="page-copy">
           <h1>Locations</h1>
           <p className="muted">Optional grouping for the live board filter. Hierarchy is location → sub-location → device.</p>
         </div>
@@ -75,7 +75,7 @@ export function Locations() {
         {tree.map((loc) => (
           <article key={loc.id} className="card">
             <div className="card-head">
-              <h2>{loc.name}</h2>
+              <h2 title={loc.name}>{loc.name}</h2>
               <button
                 type="button"
                 className="btn ghost"

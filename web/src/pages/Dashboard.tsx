@@ -72,7 +72,7 @@ export function Dashboard() {
   return (
     <section className="page">
       <header className="page-head">
-        <div>
+        <div className="page-copy">
           <h1>Live board</h1>
           <p className="muted">
             Latest temperature, pressure, and humidity. Units as published by devices (°C, hPa, %RH).
@@ -92,7 +92,7 @@ export function Dashboard() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <label>
+        <label className="toolbar-filter">
           <span className="sr-only">Filter by location</span>
           <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
             <option value="">All locations</option>

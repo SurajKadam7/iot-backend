@@ -10,9 +10,11 @@ export function AppShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
       <aside className="sidebar" aria-label="Primary">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          <div>
+          <div className="brand-copy">
             <div className="brand-name">Live Feed</div>
-            <div className="brand-org">{me.organization_name}</div>
+            <div className="brand-org" title={me.organization_name}>
+              {me.organization_name}
+            </div>
           </div>
         </div>
         <nav className="nav">
@@ -28,7 +30,9 @@ export function AppShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         </nav>
         <div className="sidebar-foot">
           <div className="who">
-            <span className="who-email">{me.email}</span>
+            <span className="who-email" title={me.email}>
+              {me.email}
+            </span>
             <span className="pill">{me.role === "org_admin" ? "Admin" : "Viewer"}</span>
           </div>
           <button type="button" className="btn ghost full" onClick={onLogout}>

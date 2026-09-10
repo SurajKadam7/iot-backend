@@ -91,7 +91,7 @@ export function Devices() {
   return (
     <section className="page">
       <header className="page-head">
-        <div>
+        <div className="page-copy">
           <h1>Devices</h1>
           <p className="muted">Register devices that already have certificates in IoT Core. Identifier is the MQTT topic id.</p>
         </div>
@@ -118,17 +118,19 @@ export function Devices() {
           <tbody>
             {devices.map((d) => (
               <tr key={d.id}>
-                <td>{d.name}</td>
-                <td>
-                  <code>{d.device_identifier}</code>
+                <td data-label="Name" title={d.name}>
+                  {d.name}
                 </td>
-                <td className="muted">
+                <td data-label="Identifier">
+                  <code title={d.device_identifier}>{d.device_identifier}</code>
+                </td>
+                <td className="muted" data-label="Location" title={[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}>
                   {[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}
                 </td>
-                <td>
+                <td data-label="Status">
                   <span className={`pill ${d.status}`}>{d.status}</span>
                 </td>
-                <td className="row-actions">
+                <td className="row-actions" data-label="Actions">
                   <button type="button" className="btn ghost" onClick={() => startEdit(d)}>
                     Edit
                   </button>
