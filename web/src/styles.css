@@ -293,8 +293,10 @@ label { display: grid; gap: 6px; font-size: 0.9rem; }
   color: var(--muted);
   font-size: 0.8rem;
   min-width: 0;
+  overflow: hidden;
 }
 .widget-foot code {
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
