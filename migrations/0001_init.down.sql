@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS sub_locations;
+DROP TABLE IF EXISTS locations;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;
