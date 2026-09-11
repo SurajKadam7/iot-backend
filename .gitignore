@@ -45,3 +45,4 @@ backend-secrets/
 # Editor/IDE
 # .idea/
 # .vscode/
+.agents/

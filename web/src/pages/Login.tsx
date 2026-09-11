@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import type { LoginHandler } from "../App";
+import { Brand } from "../components/Brand";
 
 export function Login({ onSubmit, error }: { onSubmit: LoginHandler; error: string | null }) {
   const cognito = (import.meta.env.VITE_AUTH_MODE || "local").toLowerCase() === "cognito";
@@ -20,18 +21,12 @@ export function Login({ onSubmit, error }: { onSubmit: LoginHandler; error: stri
   return (
     <div className="login-page">
       <div className="login-panel">
-        <div className="brand login-brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <div className="brand-copy">
-            <div className="brand-name">IoT Live Feed</div>
-            <div className="brand-org">Organization telemetry board</div>
-          </div>
-        </div>
+        <Brand size="large" />
         <h1>Sign in</h1>
         <p className="muted">
           {cognito
             ? "Use your Cognito email and password. The ID token must include organization_id, role, and can_export."
-            : "Local development login. Seeded admin: admin@example.com. Viewer: user@example.com."}
+            : "Local development login. Client admin: admin@example.com. Viewer: user@example.com. Operator console: ops@example.com."}
         </p>
         <form onSubmit={submit} className="stack">
           <label>

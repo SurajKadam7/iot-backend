@@ -20,13 +20,13 @@ Source of truth: `requirement.md`, `architecture.md`. Agent instructions: `agent
 - Cognito-compatible JWT auth (`user_id`, `organization_id`, `role`, `can_export`) plus local login for development
 - MQTT subscriber with reconnect, schema validation, device-table authorization
 - Concurrency-safe in-memory latest reading per device (no timer deletion, no `last_seen` column)
-- REST: health/ready, me, locations, sub-locations, admin device CRUD
+- REST: health/ready, me, locations, sub-locations, admin device CRUD, admin user CRUD, internal org overview
 - WebSocket: first-message JWT within 5s, org-scoped snapshot + live pushes
-- React UI: login, scrollable live widgets, admin devices and locations
+- React UI: client live board + admin pages; operator console at `/internal`
 - Tests for tenant isolation, ACL, telemetry ingest, WebSocket auth
 - Local Mosquitto publisher and seed data
 
-**Not in Phase 1:** `POST/GET /api/exports`, export UI, Firehose worker, invitations, per-device ACL, cert provisioning UI.
+**Not in Phase 1:** `POST/GET /api/exports`, export UI, Firehose worker, email invitations, per-device ACL, cert provisioning UI.
 
 ## Quick start
 
@@ -40,7 +40,7 @@ cd web && npm install && npm run dev
 go run ./cmd/pub
 ```
 
-Sign in at http://localhost:5173 as `admin@example.com`.
+Sign in at http://localhost:5173 as `admin@example.com` (client) or `ops@example.com` (operator console).
 
 ## Implementation decisions (docs were silent)
 

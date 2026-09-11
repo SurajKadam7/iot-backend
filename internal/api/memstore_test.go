@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 
@@ -39,6 +40,20 @@ func (m *memStore) GetOrganization(_ context.Context, id uuid.UUID) (models.Orga
 	return o, nil
 }
 
+func (m *memStore) ListOrganizations(_ context.Context) ([]models.Organization, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.Organization
+	for _, o := range m.orgs {
+		out = append(out, o)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	if out == nil {
+		out = []models.Organization{}
+	}
+	return out, nil
+}
+
 func (m *memStore) GetUserByID(_ context.Context, id uuid.UUID) (models.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -71,6 +86,119 @@ func (m *memStore) GetUserByEmail(_ context.Context, email string) (models.User,
 	return models.User{}, repository.ErrNotFound
 }
 
+func (m *memStore) GetUser(_ context.Context, orgID, id uuid.UUID) (models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok || u.OrganizationID != orgID {
+		return models.User{}, repository.ErrNotFound
+	}
+	return u, nil
+}
+
+func (m *memStore) ListUsers(_ context.Context, orgID uuid.UUID) ([]models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.User
+	for _, u := range m.users {
+		if u.OrganizationID == orgID {
+			out = append(out, u)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	if out == nil {
+		out = []models.User{}
+	}
+	return out, nil
+}
+
+func (m *memStore) ListAllUsers(_ context.Context) ([]models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.User
+	for _, u := range m.users {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	if out == nil {
+		out = []models.User{}
+	}
+	return out, nil
+}
+
+func (m *memStore) CountUsers(_ context.Context, orgID uuid.UUID) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, u := range m.users {
+		if u.OrganizationID == orgID {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *memStore) CountActiveAdmins(_ context.Context, orgID uuid.UUID) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, u := range m.users {
+		if u.OrganizationID == orgID && u.Role == models.RoleOrgAdmin && u.Status == models.StatusActive {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *memStore) CreateUser(_ context.Context, u models.User) (models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, existing := range m.users {
+		if strings.EqualFold(existing.Email, u.Email) || existing.CognitoSubject == u.CognitoSubject {
+			return models.User{}, repository.ErrConflict
+		}
+	}
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
+	if u.Status == "" {
+		u.Status = models.StatusActive
+	}
+	m.users[u.ID] = u
+	return u, nil
+}
+
+func (m *memStore) UpdateUser(_ context.Context, orgID, id uuid.UUID, role *string, canExport *bool, status *string) (models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok || u.OrganizationID != orgID {
+		return models.User{}, repository.ErrNotFound
+	}
+	if role != nil {
+		u.Role = *role
+	}
+	if canExport != nil {
+		u.CanExport = *canExport
+	}
+	if status != nil {
+		u.Status = *status
+	}
+	m.users[id] = u
+	return u, nil
+}
+
+func (m *memStore) DeleteUser(_ context.Context, orgID, id uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok || u.OrganizationID != orgID {
+		return repository.ErrNotFound
+	}
+	delete(m.users, id)
+	return nil
+}
+
 func (m *memStore) ListLocations(_ context.Context, orgID uuid.UUID) ([]models.Location, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -79,6 +207,19 @@ func (m *memStore) ListLocations(_ context.Context, orgID uuid.UUID) ([]models.L
 		if l.OrganizationID == orgID {
 			out = append(out, l)
 		}
+	}
+	if out == nil {
+		out = []models.Location{}
+	}
+	return out, nil
+}
+
+func (m *memStore) ListAllLocations(_ context.Context) ([]models.Location, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.Location
+	for _, l := range m.locs {
+		out = append(out, l)
 	}
 	if out == nil {
 		out = []models.Location{}
@@ -119,6 +260,19 @@ func (m *memStore) ListSubLocations(_ context.Context, orgID, locationID uuid.UU
 	return out, nil
 }
 
+func (m *memStore) ListAllSubLocations(_ context.Context) ([]models.SubLocation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.SubLocation
+	for _, s := range m.subs {
+		out = append(out, s)
+	}
+	if out == nil {
+		out = []models.SubLocation{}
+	}
+	return out, nil
+}
+
 func (m *memStore) CreateSubLocation(_ context.Context, orgID, locationID uuid.UUID, name string) (models.SubLocation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -145,6 +299,19 @@ func (m *memStore) ListDevices(_ context.Context, orgID uuid.UUID) ([]models.Dev
 		if d.OrganizationID == orgID {
 			out = append(out, d)
 		}
+	}
+	if out == nil {
+		out = []models.Device{}
+	}
+	return out, nil
+}
+
+func (m *memStore) ListAllDevices(_ context.Context) ([]models.Device, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.Device
+	for _, d := range m.devices {
+		out = append(out, d)
 	}
 	if out == nil {
 		out = []models.Device{}

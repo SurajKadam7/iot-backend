@@ -13,11 +13,12 @@ MVP UI may present devices as a **scrollable live widget board** (optionally fil
 - JWT (from Cognito login) must include trusted claims: `user_id`, `organization_id`, `role`, and `can_export`.
 - Backend derives tenant context **only** from JWT claims — never from request body/query.
 - Roles:
-  - `org_admin`: manage locations/devices (CRUD as exposed by APIs); view live dashboard; export if `can_export`.
+  - `org_admin`: manage locations/devices/users (CRUD as exposed by APIs); view live dashboard; export if `can_export`.
   - `org_user`: view live dashboard for their org; export only if `can_export` is true.
+  - `platform_admin`: internal operator console only (all organizations, read-only). Not a client login.
 - **Per-device ACL is deferred** (post-MVP).
-- **Email invites are deferred** (post-MVP). Users are created/seeded for MVP (respect org `user_limit` when adding users later).
-- Platform/admin (multi-tenant operator) capabilities are out of scope for MVP.
+- **Email invites are deferred** (post-MVP). Org admins can add/remove users in their organization and set `role` / `can_export`, respecting org `user_limit`. Cognito pool users are still created outside the app.
+- Platform operators (`platform_admin`) get a separate read-only console of all organizations, users (email + role), locations, and device counts. They cannot create orgs or use the client live board.
 
 ## Core behavior
 1. Devices publish telemetry to AWS IoT Core over MQTT (**QoS 1**). Expected MVP load: **~50 devices at ~1 event/s each (~50 msg/s)**.

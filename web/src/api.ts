@@ -1,4 +1,4 @@
-import type { ApiError, Device, Location, Me, SubLocation } from "./types";
+import type { ApiError, Device, Location, Me, OrganizationOverview, OrgUser, Role, SubLocation } from "./types";
 
 const TOKEN_KEY = "iot_jwt";
 
@@ -109,5 +109,23 @@ export const api = {
   },
   async deleteDevice(id: string): Promise<void> {
     return parse(await fetch(`/api/devices/${id}`, { method: "DELETE", headers: headers() }));
+  },
+  async users(): Promise<{ users: OrgUser[] }> {
+    return parse(await fetch("/api/users", { headers: headers() }));
+  },
+  async createUser(body: { email: string; role: Role; can_export: boolean }): Promise<OrgUser> {
+    return parse(await fetch("/api/users", { method: "POST", headers: headers(true), body: JSON.stringify(body) }));
+  },
+  async patchUser(
+    id: string,
+    body: { role?: Role; can_export?: boolean; status?: "active" | "disabled" },
+  ): Promise<OrgUser> {
+    return parse(await fetch(`/api/users/${id}`, { method: "PATCH", headers: headers(true), body: JSON.stringify(body) }));
+  },
+  async deleteUser(id: string): Promise<void> {
+    return parse(await fetch(`/api/users/${id}`, { method: "DELETE", headers: headers() }));
+  },
+  async internalOrganizations(): Promise<{ organizations: OrganizationOverview[] }> {
+    return parse(await fetch("/api/internal/organizations", { headers: headers() }));
   },
 };

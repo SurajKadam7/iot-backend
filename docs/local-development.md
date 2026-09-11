@@ -35,10 +35,17 @@ go run ./cmd/seed
 
 Seeded accounts (local auth only):
 
-| Email | Role |
-|---|---|
-| admin@example.com | `org_admin` |
-| user@example.com | `org_user` |
+| Email | Role | Export |
+|---|---|---|
+| admin@example.com | `org_admin` | yes |
+| user@example.com | `org_user` | no |
+| ops@example.com | `platform_admin` | no |
+
+Org admins can add, edit, and remove users at **Users** in the UI (`GET/POST/PATCH/DELETE /api/users`). Access is Viewer or Admin; export is a `can_export` flag (CSV download is not implemented yet). The org `user_limit` is enforced. Local-mode users sign in with email only. Client admins cannot create `platform_admin`.
+
+`ops@example.com` opens the **operator console** (`/internal`): every organization, user emails and roles, locations, and device counts. Read-only.
+
+For Cognito, still create a matching pool user outside this app; the UI only writes the Postgres `users` row.
 
 Organization id: `00000000-0000-4000-8000-000000000001`
 
@@ -68,7 +75,7 @@ make web-dev
 
 Or: `cd web && npm install && npm run dev`.
 
-Open http://localhost:5173 and sign in as `admin@example.com`. `make web` only **builds** the SPA (`web/dist`) for the Go server to serve.
+Open http://localhost:5173 and sign in as `admin@example.com` for the client app, or `ops@example.com` for the operator console. `make web` only **builds** the SPA (`web/dist`) for the Go server to serve.
 
 Terminal 4 — publish live readings:
 

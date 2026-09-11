@@ -1,12 +1,23 @@
 export type Role = "org_admin" | "org_user";
+export type AuthRole = Role | "platform_admin";
 
 export type Me = {
   user_id: string;
   organization_id: string;
   organization_name: string;
   email: string;
+  role: AuthRole;
+  can_export: boolean;
+};
+
+export type OrgUser = {
+  id: string;
+  organization_id: string;
+  email: string;
   role: Role;
   can_export: boolean;
+  status: "active" | "disabled";
+  created_at: string;
 };
 
 export type Location = {
@@ -52,3 +63,36 @@ export type ApiError = {
 };
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline" | "paused";
+
+export type OrgOverviewUser = {
+  id: string;
+  email: string;
+  role: AuthRole;
+  status: "active" | "disabled";
+};
+
+export type OrgOverviewSubLocation = {
+  id: string;
+  name: string;
+  device_count: number;
+};
+
+export type OrgOverviewLocation = {
+  id: string;
+  name: string;
+  device_count: number;
+  sub_locations: OrgOverviewSubLocation[];
+};
+
+export type OrganizationOverview = {
+  id: string;
+  name: string;
+  status: "active" | "disabled";
+  user_limit: number;
+  created_at: string;
+  user_count: number;
+  device_count: number;
+  unassigned_device_count: number;
+  users: OrgOverviewUser[];
+  locations: OrgOverviewLocation[];
+};

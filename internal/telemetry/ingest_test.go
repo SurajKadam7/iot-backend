@@ -25,6 +25,7 @@ func (f *fakeRepo) GetOrganization(_ context.Context, id uuid.UUID) (models.Orga
 	}
 	return o, nil
 }
+func (f *fakeRepo) ListOrganizations(context.Context) ([]models.Organization, error) { return nil, nil }
 func (f *fakeRepo) GetUserByID(context.Context, uuid.UUID) (models.User, error) {
 	return models.User{}, repository.ErrNotFound
 }
@@ -34,9 +35,24 @@ func (f *fakeRepo) GetUserBySubject(context.Context, string) (models.User, error
 func (f *fakeRepo) GetUserByEmail(context.Context, string) (models.User, error) {
 	return models.User{}, repository.ErrNotFound
 }
+func (f *fakeRepo) GetUser(context.Context, uuid.UUID, uuid.UUID) (models.User, error) {
+	return models.User{}, repository.ErrNotFound
+}
+func (f *fakeRepo) ListUsers(context.Context, uuid.UUID) ([]models.User, error) { return nil, nil }
+func (f *fakeRepo) ListAllUsers(context.Context) ([]models.User, error)         { return nil, nil }
+func (f *fakeRepo) CountUsers(context.Context, uuid.UUID) (int, error)          { return 0, nil }
+func (f *fakeRepo) CountActiveAdmins(context.Context, uuid.UUID) (int, error)   { return 0, nil }
+func (f *fakeRepo) CreateUser(context.Context, models.User) (models.User, error) {
+	return models.User{}, nil
+}
+func (f *fakeRepo) UpdateUser(context.Context, uuid.UUID, uuid.UUID, *string, *bool, *string) (models.User, error) {
+	return models.User{}, nil
+}
+func (f *fakeRepo) DeleteUser(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 func (f *fakeRepo) ListLocations(context.Context, uuid.UUID) ([]models.Location, error) {
 	return nil, nil
 }
+func (f *fakeRepo) ListAllLocations(context.Context) ([]models.Location, error) { return nil, nil }
 func (f *fakeRepo) CreateLocation(context.Context, uuid.UUID, string) (models.Location, error) {
 	return models.Location{}, nil
 }
@@ -46,6 +62,9 @@ func (f *fakeRepo) GetLocation(context.Context, uuid.UUID, uuid.UUID) (models.Lo
 func (f *fakeRepo) ListSubLocations(context.Context, uuid.UUID, uuid.UUID) ([]models.SubLocation, error) {
 	return nil, nil
 }
+func (f *fakeRepo) ListAllSubLocations(context.Context) ([]models.SubLocation, error) {
+	return nil, nil
+}
 func (f *fakeRepo) CreateSubLocation(context.Context, uuid.UUID, uuid.UUID, string) (models.SubLocation, error) {
 	return models.SubLocation{}, nil
 }
@@ -53,6 +72,7 @@ func (f *fakeRepo) GetSubLocation(context.Context, uuid.UUID, uuid.UUID) (models
 	return models.SubLocation{}, repository.ErrNotFound
 }
 func (f *fakeRepo) ListDevices(context.Context, uuid.UUID) ([]models.Device, error) { return nil, nil }
+func (f *fakeRepo) ListAllDevices(context.Context) ([]models.Device, error)         { return nil, nil }
 func (f *fakeRepo) GetDevice(context.Context, uuid.UUID, uuid.UUID) (models.Device, error) {
 	return models.Device{}, repository.ErrNotFound
 }

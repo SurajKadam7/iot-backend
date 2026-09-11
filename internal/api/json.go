@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
 	"time"
@@ -28,6 +29,53 @@ func requireIdentifier(id string) (string, error) {
 		return "", fmt.Errorf("device_identifier must be 1-128 characters of letters, numbers, . _ : -")
 	}
 	return id, nil
+}
+
+func requireEmail(email string) (string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return "", fmt.Errorf("email is required")
+	}
+	if len(email) > 254 {
+		return "", fmt.Errorf("email is too long")
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || !strings.EqualFold(addr.Address, email) {
+		return "", fmt.Errorf("invalid email")
+	}
+	return email, nil
+}
+
+func requireRole(role string) (string, error) {
+	role = strings.TrimSpace(role)
+	if role != models.RoleOrgAdmin && role != models.RoleOrgUser {
+		return "", fmt.Errorf("role must be org_admin or org_user")
+	}
+	return role, nil
+}
+
+func userJSON(u models.User) map[string]any {
+	created := ""
+	if !u.CreatedAt.IsZero() {
+		created = u.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return map[string]any{
+		"id":              u.ID,
+		"organization_id": u.OrganizationID,
+		"email":           u.Email,
+		"role":            u.Role,
+		"can_export":      u.CanExport,
+		"status":          u.Status,
+		"created_at":      created,
+	}
+}
+
+func userJSONList(list []models.User) []map[string]any {
+	out := make([]map[string]any, 0, len(list))
+	for _, u := range list {
+		out = append(out, userJSON(u))
+	}
+	return out
 }
 
 func locationJSON(l models.Location) map[string]any {

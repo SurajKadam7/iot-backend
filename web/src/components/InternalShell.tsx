@@ -1,33 +1,26 @@
 import { NavLink, Outlet } from "react-router-dom";
-import type { Me } from "../types";
 import { Brand } from "./Brand";
+import type { Me } from "../types";
 
-export function AppShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
+export function InternalShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   return (
     <div className="app">
       <a className="skip" href="#main">
         Skip to content
       </a>
       <aside className="sidebar" aria-label="Primary">
-        <Brand subtitle={me.organization_name} />
+        <Brand subtitle="Internal · all organizations" />
         <nav className="nav">
-          <NavLink to="/" end>
-            Live board
+          <NavLink to="/internal" end>
+            Organizations
           </NavLink>
-          {me.role === "org_admin" && (
-            <>
-              <NavLink to="/devices">Devices</NavLink>
-              <NavLink to="/locations">Locations</NavLink>
-              <NavLink to="/users">Users</NavLink>
-            </>
-          )}
         </nav>
         <div className="sidebar-foot">
           <div className="who">
             <span className="who-email" title={me.email}>
               {me.email}
             </span>
-            <span className="pill">{me.role === "org_admin" ? "Admin" : "Viewer"}</span>
+            <span className="pill admin">Operator</span>
           </div>
           <button type="button" className="btn ghost full" onClick={onLogout}>
             Sign out
@@ -35,7 +28,7 @@ export function AppShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         </div>
       </aside>
       <main id="main" className="main">
-        <Outlet context={me} />
+        <Outlet />
       </main>
     </div>
   );

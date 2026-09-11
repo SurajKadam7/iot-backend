@@ -34,6 +34,31 @@ func TestMintAndParseLocal(t *testing.T) {
 	}
 }
 
+func TestMintAndParsePlatformAdmin(t *testing.T) {
+	v, err := NewValidator("local", "secret", "iot-local", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := models.User{
+		ID:             uuid.New(),
+		OrganizationID: uuid.New(),
+		CognitoSubject: "local-ops",
+		Role:           models.RolePlatformAdmin,
+		CanExport:      false,
+	}
+	tok, err := v.MintLocal(u, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := v.Parse(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Role != models.RolePlatformAdmin || !p.IsPlatformAdmin() {
+		t.Fatalf("claims %#v", p)
+	}
+}
+
 func TestRejectsTamperedToken(t *testing.T) {
 	v, _ := NewValidator("local", "secret", "iot-local", "", "")
 	u := models.User{

@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	RoleOrgAdmin = "org_admin"
-	RoleOrgUser  = "org_user"
+	RoleOrgAdmin      = "org_admin"
+	RoleOrgUser       = "org_user"
+	RolePlatformAdmin = "platform_admin"
 
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
@@ -76,6 +77,14 @@ func (u User) IsAdmin() bool {
 	return u.Role == RoleOrgAdmin
 }
 
+func (u User) IsPlatformAdmin() bool {
+	return u.Role == RolePlatformAdmin
+}
+
 func (u User) IsActive() bool {
 	return u.Status == StatusActive
+}
+
+func ValidAuthRole(role string) bool {
+	return role == RoleOrgAdmin || role == RoleOrgUser || role == RolePlatformAdmin
 }

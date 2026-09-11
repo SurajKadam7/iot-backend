@@ -17,19 +17,31 @@ var ErrConflict = errors.New("conflict")
 
 type Store interface {
 	GetOrganization(ctx context.Context, id uuid.UUID) (models.Organization, error)
+	ListOrganizations(ctx context.Context) ([]models.Organization, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error)
 	GetUserBySubject(ctx context.Context, subject string) (models.User, error)
 	GetUserByEmail(ctx context.Context, email string) (models.User, error)
+	GetUser(ctx context.Context, orgID, id uuid.UUID) (models.User, error)
+	ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User, error)
+	ListAllUsers(ctx context.Context) ([]models.User, error)
+	CountUsers(ctx context.Context, orgID uuid.UUID) (int, error)
+	CountActiveAdmins(ctx context.Context, orgID uuid.UUID) (int, error)
+	CreateUser(ctx context.Context, u models.User) (models.User, error)
+	UpdateUser(ctx context.Context, orgID, id uuid.UUID, role *string, canExport *bool, status *string) (models.User, error)
+	DeleteUser(ctx context.Context, orgID, id uuid.UUID) error
 
 	ListLocations(ctx context.Context, orgID uuid.UUID) ([]models.Location, error)
+	ListAllLocations(ctx context.Context) ([]models.Location, error)
 	CreateLocation(ctx context.Context, orgID uuid.UUID, name string) (models.Location, error)
 	GetLocation(ctx context.Context, orgID, id uuid.UUID) (models.Location, error)
 
 	ListSubLocations(ctx context.Context, orgID, locationID uuid.UUID) ([]models.SubLocation, error)
+	ListAllSubLocations(ctx context.Context) ([]models.SubLocation, error)
 	CreateSubLocation(ctx context.Context, orgID, locationID uuid.UUID, name string) (models.SubLocation, error)
 	GetSubLocation(ctx context.Context, orgID, id uuid.UUID) (models.SubLocation, error)
 
 	ListDevices(ctx context.Context, orgID uuid.UUID) ([]models.Device, error)
+	ListAllDevices(ctx context.Context) ([]models.Device, error)
 	GetDevice(ctx context.Context, orgID, id uuid.UUID) (models.Device, error)
 	GetDeviceByIdentifier(ctx context.Context, identifier string) (models.Device, error)
 	CreateDevice(ctx context.Context, d models.Device) (models.Device, error)
@@ -56,6 +68,28 @@ func (p *Postgres) GetOrganization(ctx context.Context, id uuid.UUID) (models.Or
 	return o, err
 }
 
+func (p *Postgres) ListOrganizations(ctx context.Context) ([]models.Organization, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, name, user_limit, status, created_at
+		FROM organizations ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Organization
+	for rows.Next() {
+		var o models.Organization
+		if err := rows.Scan(&o.ID, &o.Name, &o.UserLimit, &o.Status, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	if out == nil {
+		out = []models.Organization{}
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error) {
 	return p.scanUser(p.pool.QueryRow(ctx, userSelect+" WHERE id=$1", id))
 }
@@ -68,14 +102,126 @@ func (p *Postgres) GetUserByEmail(ctx context.Context, email string) (models.Use
 	return p.scanUser(p.pool.QueryRow(ctx, userSelect+" WHERE lower(email)=lower($1)", email))
 }
 
+func (p *Postgres) GetUser(ctx context.Context, orgID, id uuid.UUID) (models.User, error) {
+	return p.scanUser(p.pool.QueryRow(ctx, userSelect+" WHERE id=$1 AND organization_id=$2", id, orgID))
+}
+
+func (p *Postgres) ListUsers(ctx context.Context, orgID uuid.UUID) ([]models.User, error) {
+	rows, err := p.pool.Query(ctx, userSelect+" WHERE organization_id=$1 ORDER BY email", orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.User
+	for rows.Next() {
+		u, err := scanUserRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	if out == nil {
+		out = []models.User{}
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ListAllUsers(ctx context.Context) ([]models.User, error) {
+	rows, err := p.pool.Query(ctx, userSelect+" ORDER BY email")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.User
+	for rows.Next() {
+		u, err := scanUserRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	if out == nil {
+		out = []models.User{}
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) CountUsers(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var n int
+	err := p.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE organization_id=$1`, orgID).Scan(&n)
+	return n, err
+}
+
+func (p *Postgres) CountActiveAdmins(ctx context.Context, orgID uuid.UUID) (int, error) {
+	var n int
+	err := p.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM users
+		WHERE organization_id=$1 AND role=$2 AND status=$3`,
+		orgID, models.RoleOrgAdmin, models.StatusActive).Scan(&n)
+	return n, err
+}
+
+func (p *Postgres) CreateUser(ctx context.Context, u models.User) (models.User, error) {
+	created, err := p.scanUser(p.pool.QueryRow(ctx, `
+		INSERT INTO users (organization_id, cognito_subject, email, role, can_export, status)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, organization_id, cognito_subject, email, role, can_export, status, created_at`,
+		u.OrganizationID, u.CognitoSubject, u.Email, u.Role, u.CanExport, u.Status))
+	if err != nil {
+		if isUniqueViolation(err) {
+			return models.User{}, ErrConflict
+		}
+		return models.User{}, err
+	}
+	return created, nil
+}
+
+func (p *Postgres) UpdateUser(ctx context.Context, orgID, id uuid.UUID, role *string, canExport *bool, status *string) (models.User, error) {
+	if _, err := p.GetUser(ctx, orgID, id); err != nil {
+		return models.User{}, err
+	}
+	if role != nil {
+		if _, err := p.pool.Exec(ctx, `UPDATE users SET role=$1 WHERE id=$2 AND organization_id=$3`, *role, id, orgID); err != nil {
+			return models.User{}, err
+		}
+	}
+	if canExport != nil {
+		if _, err := p.pool.Exec(ctx, `UPDATE users SET can_export=$1 WHERE id=$2 AND organization_id=$3`, *canExport, id, orgID); err != nil {
+			return models.User{}, err
+		}
+	}
+	if status != nil {
+		if _, err := p.pool.Exec(ctx, `UPDATE users SET status=$1 WHERE id=$2 AND organization_id=$3`, *status, id, orgID); err != nil {
+			return models.User{}, err
+		}
+	}
+	return p.GetUser(ctx, orgID, id)
+}
+
+func (p *Postgres) DeleteUser(ctx context.Context, orgID, id uuid.UUID) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM users WHERE id=$1 AND organization_id=$2`, id, orgID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 const userSelect = `SELECT id, organization_id, cognito_subject, email, role, can_export, status, created_at FROM users`
 
 func (p *Postgres) scanUser(row pgx.Row) (models.User, error) {
-	var u models.User
-	err := row.Scan(&u.ID, &u.OrganizationID, &u.CognitoSubject, &u.Email, &u.Role, &u.CanExport, &u.Status, &u.CreatedAt)
+	u, err := scanUserRow(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.User{}, ErrNotFound
 	}
+	return u, err
+}
+
+func scanUserRow(row rowScanner) (models.User, error) {
+	var u models.User
+	err := row.Scan(&u.ID, &u.OrganizationID, &u.CognitoSubject, &u.Email, &u.Role, &u.CanExport, &u.Status, &u.CreatedAt)
 	return u, err
 }
 
@@ -83,6 +229,28 @@ func (p *Postgres) ListLocations(ctx context.Context, orgID uuid.UUID) ([]models
 	rows, err := p.pool.Query(ctx, `
 		SELECT id, organization_id, name, created_at
 		FROM locations WHERE organization_id=$1 ORDER BY name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Location
+	for rows.Next() {
+		var l models.Location
+		if err := rows.Scan(&l.ID, &l.OrganizationID, &l.Name, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	if out == nil {
+		out = []models.Location{}
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ListAllLocations(ctx context.Context) ([]models.Location, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, organization_id, name, created_at
+		FROM locations ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +315,28 @@ func (p *Postgres) ListSubLocations(ctx context.Context, orgID, locationID uuid.
 	return out, rows.Err()
 }
 
+func (p *Postgres) ListAllSubLocations(ctx context.Context) ([]models.SubLocation, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, organization_id, location_id, name, created_at
+		FROM sub_locations ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.SubLocation
+	for rows.Next() {
+		var s models.SubLocation
+		if err := rows.Scan(&s.ID, &s.OrganizationID, &s.LocationID, &s.Name, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if out == nil {
+		out = []models.SubLocation{}
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) CreateSubLocation(ctx context.Context, orgID, locationID uuid.UUID, name string) (models.SubLocation, error) {
 	var s models.SubLocation
 	err := p.pool.QueryRow(ctx, `
@@ -178,6 +368,26 @@ LEFT JOIN locations loc ON loc.id = sl.location_id`
 
 func (p *Postgres) ListDevices(ctx context.Context, orgID uuid.UUID) ([]models.Device, error) {
 	rows, err := p.pool.Query(ctx, deviceSelect+` WHERE d.organization_id=$1 ORDER BY d.name`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Device
+	for rows.Next() {
+		d, err := scanDevice(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	if out == nil {
+		out = []models.Device{}
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) ListAllDevices(ctx context.Context) ([]models.Device, error) {
+	rows, err := p.pool.Query(ctx, deviceSelect+` ORDER BY d.name`)
 	if err != nil {
 		return nil, err
 	}

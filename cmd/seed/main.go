@@ -94,9 +94,28 @@ func run() error {
 		}
 	}
 
+	platformOrgID := uuid.MustParse("00000000-0000-4000-8000-000000000099")
+	opsID := uuid.MustParse("00000000-0000-4000-8000-000000000012")
+	_, err = pool.Exec(ctx, `
+		INSERT INTO organizations (id, name, user_limit, status)
+		VALUES ($1, 'Internal operators', 5, 'active')
+		ON CONFLICT (id) DO NOTHING`, platformOrgID)
+	if err != nil {
+		return err
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO users (id, organization_id, cognito_subject, email, role, can_export, status)
+		VALUES ($1, $2, 'local-ops', 'ops@example.com', 'platform_admin', false, 'active')
+		ON CONFLICT (id) DO NOTHING`, opsID, platformOrgID)
+	if err != nil {
+		return err
+	}
+
 	fmt.Println("Seeded local organization Acme Manufacturing")
 	fmt.Println("  org_admin: admin@example.com")
 	fmt.Println("  org_user:  user@example.com")
+	fmt.Println("Seeded internal operator console")
+	fmt.Println("  platform_admin: ops@example.com")
 	fmt.Println("MQTT topic pattern: org/00000000-0000-4000-8000-000000000001/device/{device_identifier}/telemetry")
 	return nil
 }

@@ -2,11 +2,20 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, getToken, setToken } from "./api";
 import { AppShell } from "./components/AppShell";
+import { InternalShell } from "./components/InternalShell";
 import { Dashboard } from "./pages/Dashboard";
 import { Devices } from "./pages/Devices";
 import { Locations } from "./pages/Locations";
 import { Login } from "./pages/Login";
+import { Organizations } from "./pages/Organizations";
+import { Users } from "./pages/Users";
 import type { Me } from "./types";
+
+function homePath(me: Me | null): string {
+  if (!me) return "/login";
+  if (me.role === "platform_admin") return "/internal";
+  return "/";
+}
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -40,7 +49,7 @@ export function App() {
       }
       const profile = await api.me();
       setMe(profile);
-      navigate("/");
+      navigate(homePath(profile));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
     }
@@ -60,18 +69,32 @@ export function App() {
     );
   }
 
+  const client = me && me.role !== "platform_admin";
+  const operator = me?.role === "platform_admin";
+
   return (
     <Routes>
       <Route
         path="/login"
-        element={me ? <Navigate to="/" replace /> : <Login onSubmit={onLogin} error={error} />}
+        element={me ? <Navigate to={homePath(me)} replace /> : <Login onSubmit={onLogin} error={error} />}
       />
       <Route
         element={
-          me ? (
+          operator && me ? (
+            <InternalShell me={me} onLogout={logout} />
+          ) : (
+            <Navigate to={homePath(me)} replace />
+          )
+        }
+      >
+        <Route path="/internal" element={<Organizations />} />
+      </Route>
+      <Route
+        element={
+          client ? (
             <AppShell me={me} onLogout={logout} />
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to={homePath(me)} replace />
           )
         }
       >
@@ -84,8 +107,12 @@ export function App() {
           path="/locations"
           element={me?.role === "org_admin" ? <Locations /> : <Navigate to="/" replace />}
         />
+        <Route
+          path="/users"
+          element={me?.role === "org_admin" ? <Users /> : <Navigate to="/" replace />}
+        />
       </Route>
-      <Route path="*" element={<Navigate to={me ? "/" : "/login"} replace />} />
+      <Route path="*" element={<Navigate to={homePath(me)} replace />} />
     </Routes>
   );
 }

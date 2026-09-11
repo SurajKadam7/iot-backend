@@ -37,6 +37,10 @@ func (p Principal) IsAdmin() bool {
 	return p.Role == models.RoleOrgAdmin
 }
 
+func (p Principal) IsPlatformAdmin() bool {
+	return p.Role == models.RolePlatformAdmin
+}
+
 type Validator struct {
 	mode      string
 	secret    []byte
@@ -140,7 +144,7 @@ func principalFromClaims(claims jwt.MapClaims) (Principal, error) {
 	}
 	orgStr, _ := firstString(claims, "organization_id", "custom:organization_id")
 	role, _ := firstString(claims, "role", "custom:role")
-	if role != models.RoleOrgAdmin && role != models.RoleOrgUser {
+	if !models.ValidAuthRole(role) {
 		return Principal{}, fmt.Errorf("%w: role", ErrInvalidToken)
 	}
 	orgID, err := uuid.Parse(orgStr)

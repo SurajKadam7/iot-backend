@@ -213,13 +213,13 @@ Every tenant table is scoped by `organization_id`. JWT `organization_id` is the 
    - `user_id` (UUID of `users.id`) or rely on `sub` = `users.cognito_subject`
    - `organization_id`
    - `role` = `org_admin` | `org_user`
-   - `can_export` (boolean; unused by Phase 1 APIs but still required by the JWT contract)
+   - `can_export` (boolean; org admins can change the Postgres flag; CSV export APIs are not in Phase 1)
 3. Backend env:
    - `AUTH_MODE=cognito`
    - `JWT_ISSUER=https://cognito-idp.{region}.amazonaws.com/{poolId}`
    - `JWT_JWKS_URL=.../.well-known/jwks.json`
    - `JWT_AUDIENCE={clientId}` (optional; also accepts `client_id`)
-4. Mirror each user in PostgreSQL (`users.cognito_subject`, `organization_id`, `role`, `status`).
+4. Mirror each user in PostgreSQL (`users.cognito_subject`, `organization_id`, `role`, `can_export`, `status`). Org-admin user CRUD in the app writes Postgres only; create the Cognito user out of band.
 5. One organization per user.
 
 Do not put AWS credentials in the browser. Frontend only talks to Cognito (login) and this API.

@@ -63,6 +63,11 @@ func (s *Server) Handler() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(s.authMiddleware)
 		r.Get("/api/me", s.me)
+		r.Get("/api/internal/organizations", s.requirePlatformAdmin(s.listInternalOrganizations))
+		r.Get("/api/users", s.requireAdmin(s.listUsers))
+		r.Post("/api/users", s.requireAdmin(s.createUser))
+		r.Patch("/api/users/{id}", s.requireAdmin(s.patchUser))
+		r.Delete("/api/users/{id}", s.requireAdmin(s.deleteUser))
 		r.Get("/api/locations", s.listLocations)
 		r.Post("/api/locations", s.requireAdmin(s.createLocation))
 		r.Get("/api/locations/{id}/sub-locations", s.listSubLocations)
@@ -144,6 +149,8 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 		p.Email = user.Email
 		p.UserID = user.ID
+		p.Role = user.Role
+		p.CanExport = user.CanExport
 		next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(r.Context(), p)))
 	})
 }

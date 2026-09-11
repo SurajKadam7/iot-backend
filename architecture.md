@@ -40,8 +40,8 @@ DNS → Route 53 | TLS → ACM | Monitoring → CloudWatch
 ## Auth & ACL
 
 - **One org per user.** `users.organization_id` is required and unique membership model for MVP.
-- Cognito issues JWT with at least: `user_id` (or Cognito `sub` mapped), `organization_id`, `role` (`org_admin` | `org_user`), `can_export` (boolean).
-- REST: validate JWT on every request; scope all queries by claim `organization_id`.
+- Cognito issues JWT with at least: `user_id` (or Cognito `sub` mapped), `organization_id`, `role` (`org_admin` | `org_user` | `platform_admin`), `can_export` (boolean).
+- REST: validate JWT on every request; scope tenant queries by claim `organization_id`. `platform_admin` may call `GET /api/internal/organizations` across tenants (read-only).
 - WebSocket **first-message auth** (over WSS):
   1. Client connects.
   2. Client must send auth message with JWT within **5 seconds** or server closes.
@@ -135,10 +135,15 @@ Go backend does **not** write the historical archive.
 - `POST /api/devices` (admin) — register device into org
 - `PATCH /api/devices/{id}` (admin)
 - `DELETE /api/devices/{id}` (admin)
+- `GET /api/users` (admin)
+- `POST /api/users` (admin) — add org user; enforce `user_limit`; no email invite
+- `PATCH /api/users/{id}` (admin) — `role`, `can_export`, `status`
+- `DELETE /api/users/{id}` (admin)
+- `GET /api/internal/organizations` (`platform_admin`) — all orgs, users (email + role), location tree, device counts
 - `POST /api/exports` (requires `can_export`)
 - `GET /api/exports/{id}` (requires `can_export`)
 
-Deferred: invite/user-management email APIs, per-device ACL APIs.
+Deferred: email invitation APIs, per-device ACL APIs.
 
 ### WebSocket
 - `GET /ws` — upgrade to WSS
@@ -150,7 +155,8 @@ Deferred: invite/user-management email APIs, per-device ACL APIs.
 ## Frontend (MVP)
 - Login (Cognito)
 - Live dashboard: **scrollable widgets** for temperature/pressure/humidity + timestamp; show waiting state when no in-memory value
-- Admin: add/edit/remove devices (and basic locations if needed)
+- Admin: add/edit/remove devices, locations, and org users (role + `can_export`)
+- Operator console (`platform_admin`): read-only organizations overview at `/internal`
 - Export: range + status + download (if `can_export`)
 - No AWS credentials in the browser
 
