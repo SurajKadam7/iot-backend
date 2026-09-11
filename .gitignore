@@ -35,7 +35,11 @@ web/dist/
 # Certificates and local secrets
 *.pem
 *.key
+*.crt
 bin/
+secrets/
+connect_device_package/
+backend-secrets/
 
 
 # Editor/IDE

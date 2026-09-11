@@ -2,11 +2,8 @@ package iot
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -20,10 +17,16 @@ type Subscriber struct {
 }
 
 func NewSubscriber(cfg config.Config, ingest *telemetry.Ingestor, log *slog.Logger) (*Subscriber, error) {
+	subCfg := cfg
+	subCfg.MQTTClientID = cfg.MQTTSubClientID
+	subCfg.MQTTCACertPath = cfg.MQTTSubCACertPath
+	subCfg.MQTTCertPath = cfg.MQTTSubCertPath
+	subCfg.MQTTKeyPath = cfg.MQTTSubKeyPath
+
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(cfg.MQTTBroker)
-	opts.SetClientID(cfg.MQTTClientID)
-	opts.SetKeepAlive(cfg.MQTTKeepAlive)
+	opts.AddBroker(subCfg.MQTTBroker)
+	opts.SetClientID(subCfg.MQTTClientID)
+	opts.SetKeepAlive(subCfg.MQTTKeepAlive)
 	opts.SetPingTimeout(10 * time.Second)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
@@ -31,11 +34,11 @@ func NewSubscriber(cfg config.Config, ingest *telemetry.Ingestor, log *slog.Logg
 	opts.SetMaxReconnectInterval(30 * time.Second)
 	opts.SetOrderMatters(false)
 	opts.SetCleanSession(true)
-	if cfg.MQTTUsername != "" {
-		opts.SetUsername(cfg.MQTTUsername)
-		opts.SetPassword(cfg.MQTTPassword)
+	if subCfg.MQTTUsername != "" {
+		opts.SetUsername(subCfg.MQTTUsername)
+		opts.SetPassword(subCfg.MQTTPassword)
 	}
-	tlsCfg, err := tlsConfig(cfg)
+	tlsCfg, err := TLSConfig(subCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -45,13 +48,16 @@ func NewSubscriber(cfg config.Config, ingest *telemetry.Ingestor, log *slog.Logg
 
 	s := &Subscriber{log: log}
 	opts.OnConnect = func(c mqtt.Client) {
-		log.Info("mqtt connected", "broker", cfg.MQTTBroker)
+		log.Info("mqtt connected", "broker", subCfg.MQTTBroker, "client_id", subCfg.MQTTClientID)
 		tok := c.Subscribe(TelemetryTopicFilter, 1, func(_ mqtt.Client, msg mqtt.Message) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			payload := string(msg.Payload())
 			if err := ingest.HandleMQTT(ctx, msg.Topic(), msg.Payload()); err != nil {
-				log.Debug("mqtt message not applied", "err", err)
+				log.Warn("mqtt received", "topic", msg.Topic(), "payload", payload, "applied", false, "err", err)
+				return
 			}
+			log.Info("mqtt received", "topic", msg.Topic(), "payload", payload, "applied", true)
 		})
 		if tok.Wait() && tok.Error() != nil {
 			log.Error("mqtt subscribe failed", "err", tok.Error())
@@ -80,30 +86,4 @@ func (s *Subscriber) Start(ctx context.Context) error {
 		s.client.Disconnect(250)
 	}()
 	return nil
-}
-
-func tlsConfig(cfg config.Config) (*tls.Config, error) {
-	if cfg.MQTTCertPath == "" && cfg.MQTTCACertPath == "" && !cfg.MQTTInsecureSkipVerify {
-		return nil, nil
-	}
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.MQTTInsecureSkipVerify}
-	if cfg.MQTTCACertPath != "" {
-		pem, err := os.ReadFile(cfg.MQTTCACertPath)
-		if err != nil {
-			return nil, fmt.Errorf("mqtt ca cert: %w", err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("mqtt ca cert: no PEM")
-		}
-		tlsCfg.RootCAs = pool
-	}
-	if cfg.MQTTCertPath != "" || cfg.MQTTKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.MQTTCertPath, cfg.MQTTKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("mqtt client cert: %w", err)
-		}
-		tlsCfg.Certificates = []tls.Certificate{cert}
-	}
-	return tlsCfg, nil
 }

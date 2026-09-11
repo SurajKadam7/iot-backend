@@ -63,16 +63,20 @@ go run ./cmd/server
 Terminal 3 — frontend (Vite proxies `/api` and `/ws` to `:8080`):
 
 ```bash
-cd web && npm install && npm run dev
+make web-dev
 ```
 
-Open http://localhost:5173 and sign in as `admin@example.com`.
+Or: `cd web && npm install && npm run dev`.
+
+Open http://localhost:5173 and sign in as `admin@example.com`. `make web` only **builds** the SPA (`web/dist`) for the Go server to serve.
 
 Terminal 4 — publish live readings:
 
 ```bash
 go run ./cmd/pub
 ```
+
+`cmd/pub` uses client id `iot-dev-publisher` locally (override `MQTT_PUB_CLIENT_ID`). For AWS IoT, copy [`.env.aws.publisher.example`](../.env.aws.publisher.example) into `.env` and attach [docs/aws-iot-laptop-policy.json](aws-iot-laptop-policy.json) to the Thing. See [docs/aws-setup.md](aws-setup.md).
 
 Widgets stay on **Waiting for device to publish…** until the first valid MQTT message after a backend restart. That is required behavior.
 

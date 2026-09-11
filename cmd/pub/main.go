@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,27 +30,79 @@ func run() error {
 		return err
 	}
 	orgID := env("PUB_ORG_ID", "00000000-0000-4000-8000-000000000001")
-	devices := []string{"line-a-01", "line-a-02", "line-b-01", "line-b-02"}
+	devices := []string{"line-a-01"}
 	if v := os.Getenv("PUB_DEVICES"); v != "" {
 		devices = splitCSV(v)
 	}
 
-	opts := mqtt.NewClientOptions().AddBroker(cfg.MQTTBroker).SetClientID("iot-dev-publisher")
+	interval := 10 * time.Second
+	if v := os.Getenv("PUB_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("PUB_INTERVAL: %w", err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("PUB_INTERVAL must be > 0")
+		}
+		interval = d
+	}
+
+	clientID := env("MQTT_PUB_CLIENT_ID", "iot-dev-publisher")
+	pubCfg := cfg
+	if v := env("MQTT_PUB_CA_CERT_PATH", ""); v != "" {
+		pubCfg.MQTTCACertPath = v
+	}
+	if v := env("MQTT_PUB_CERT_PATH", ""); v != "" {
+		pubCfg.MQTTCertPath = v
+	}
+	if v := env("MQTT_PUB_KEY_PATH", ""); v != "" {
+		pubCfg.MQTTKeyPath = v
+	}
+	if strings.HasPrefix(pubCfg.MQTTBroker, "ssl://") && (pubCfg.MQTTCertPath == "" || pubCfg.MQTTKeyPath == "") {
+		return fmt.Errorf("MQTT_PUB_CERT_PATH/MQTT_CERT_PATH and key path are required when MQTT_BROKER uses ssl://")
+	}
+
+	opts := mqtt.NewClientOptions().AddBroker(pubCfg.MQTTBroker).SetClientID(clientID)
+	opts.SetKeepAlive(pubCfg.MQTTKeepAlive)
+	opts.SetCleanSession(true)
+	opts.SetAutoReconnect(false)
+
+	var lostMu sync.Mutex
+	var lastLost error
+	lostAt := time.Time{}
+	opts.OnConnectionLost = func(_ mqtt.Client, lost error) {
+		lostMu.Lock()
+		lastLost = lost
+		lostAt = time.Now()
+		lostMu.Unlock()
+		fmt.Fprintf(os.Stderr, "mqtt connection lost: %v\n", lost)
+	}
+	tlsCfg, err := iot.TLSConfig(pubCfg)
+	if err != nil {
+		return err
+	}
+	if tlsCfg != nil {
+		opts.SetTLSConfig(tlsCfg)
+	}
+
+	fmt.Printf("mqtt publisher connecting broker=%s client_id=%s tls=%v interval=%s org=%s devices=%s\n",
+		cfg.MQTTBroker, clientID, tlsCfg != nil, interval, orgID, strings.Join(devices, ","))
+
 	c := mqtt.NewClient(opts)
 	tok := c.Connect()
-	if !tok.WaitTimeout(10 * time.Second) {
+	if !tok.WaitTimeout(15 * time.Second) {
 		return fmt.Errorf("mqtt connect timeout")
 	}
 	if tok.Error() != nil {
-		return tok.Error()
+		return fmt.Errorf("mqtt connect: %w (client id and IoT policy must allow iot:Connect)", tok.Error())
 	}
 	defer c.Disconnect(250)
 
-	fmt.Printf("publishing to %s for org %s\n", cfg.MQTTBroker, orgID)
+	fmt.Printf("mqtt publisher connected; topics org/%s/device/{id}/telemetry\n", orgID)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
 	base := make([][3]float64, len(devices))
@@ -73,9 +126,35 @@ func run() error {
 					"ts":          t.UTC().Format(time.RFC3339),
 				})
 				topic := iot.TelemetryTopic(orgID, id)
-				if token := c.Publish(topic, 1, false, body); token.Wait() && token.Error() != nil {
-					fmt.Fprintf(os.Stderr, "publish %s: %v\n", id, token.Error())
+				if !c.IsConnected() {
+					fmt.Fprintf(os.Stderr, "publish failed device=%s topic=%s err=not connected\n", id, topic)
+					continue
 				}
+				sentAt := time.Now()
+				token := c.Publish(topic, 1, false, body)
+				if !token.WaitTimeout(10 * time.Second) {
+					fmt.Fprintf(os.Stderr, "publish failed device=%s topic=%s err=timeout waiting for puback\n", id, topic)
+					continue
+				}
+				if err := token.Error(); err != nil {
+					fmt.Fprintf(os.Stderr, "publish failed device=%s topic=%s err=%v\n", id, topic, err)
+					continue
+				}
+				// AWS IoT closes the socket on unauthorized publish; PUBACK can still race ahead.
+				time.Sleep(400 * time.Millisecond)
+				lostMu.Lock()
+				lost := lastLost
+				when := lostAt
+				lostMu.Unlock()
+				if !when.IsZero() && !when.Before(sentAt) {
+					fmt.Fprintf(os.Stderr, "publish failed device=%s topic=%s err=connection closed after publish (%v); check IoT policy\n", id, topic, lost)
+					continue
+				}
+				if !c.IsConnected() {
+					fmt.Fprintf(os.Stderr, "publish failed device=%s topic=%s err=disconnected after publish; check IoT policy\n", id, topic)
+					continue
+				}
+				fmt.Printf("publish ok device=%s topic=%s bytes=%d\n", id, topic, len(body))
 			}
 			n++
 		}

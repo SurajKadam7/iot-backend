@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:{region}:{account}:client/iot-dev-publisher"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Publish",
+      "Resource": "arn:aws:iot:{region}:{account}:topic/org/00000000-0000-4000-8000-000000000001/device/*/telemetry"
+    }
+  ]
+}

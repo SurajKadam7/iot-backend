@@ -33,6 +33,11 @@ type Config struct {
 	MQTTKeyPath            string
 	MQTTInsecureSkipVerify bool
 	MQTTKeepAlive          time.Duration
+
+	MQTTSubClientID    string
+	MQTTSubCACertPath  string
+	MQTTSubCertPath    string
+	MQTTSubKeyPath     string
 }
 
 func Load() (Config, error) {
@@ -61,6 +66,22 @@ func Load() (Config, error) {
 		MQTTKeyPath:     env("MQTT_KEY_PATH", ""),
 		MQTTInsecureSkipVerify: envBool("MQTT_INSECURE_SKIP_VERIFY", false),
 		MQTTKeepAlive:   envDuration("MQTT_KEEP_ALIVE", 30*time.Second),
+		MQTTSubClientID:   env("MQTT_SUB_CLIENT_ID", ""),
+		MQTTSubCACertPath: env("MQTT_SUB_CA_CERT_PATH", ""),
+		MQTTSubCertPath:   env("MQTT_SUB_CERT_PATH", ""),
+		MQTTSubKeyPath:    env("MQTT_SUB_KEY_PATH", ""),
+	}
+	if cfg.MQTTSubClientID == "" {
+		cfg.MQTTSubClientID = cfg.MQTTClientID
+	}
+	if cfg.MQTTSubCACertPath == "" {
+		cfg.MQTTSubCACertPath = cfg.MQTTCACertPath
+	}
+	if cfg.MQTTSubCertPath == "" {
+		cfg.MQTTSubCertPath = cfg.MQTTCertPath
+	}
+	if cfg.MQTTSubKeyPath == "" {
+		cfg.MQTTSubKeyPath = cfg.MQTTKeyPath
 	}
 
 	switch cfg.AuthMode {
