@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
+import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
+import { PageHeader } from "../components/PageHeader";
 import type { Location, SubLocation } from "../types";
 
 type Tree = Location & { sub_locations: SubLocation[] };
@@ -49,73 +51,80 @@ export function Locations() {
   }
 
   return (
-    <section className="page">
-      <header className="page-head">
-        <div className="page-copy">
-          <h1>Locations</h1>
-          <p className="muted">Optional grouping for the live board filter. Hierarchy is location → sub-location → device.</p>
-        </div>
-        <button
-          className="btn primary"
-          type="button"
-          onClick={() => {
-            setName("");
-            setOpen("loc");
-          }}
-        >
-          Add location
-        </button>
-      </header>
+    <section className="flex flex-col gap-5">
+      <PageHeader
+        title="Locations"
+        description="Optional grouping for the live board filter. Hierarchy is location → sub-location → device."
+        actions={
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => {
+              setName("");
+              setOpen("loc");
+            }}
+          >
+            Add location
+          </button>
+        }
+      />
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <div role="alert" className="alert alert-error alert-soft">
+          <span>{error}</span>
+        </div>
       )}
-      <div className="cards">
-        {tree.map((loc) => (
-          <article key={loc.id} className="card">
-            <div className="card-head">
-              <h2 title={loc.name}>{loc.name}</h2>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => {
-                  setParent(loc);
-                  setName("");
-                  setOpen("sub");
-                }}
-              >
-                Add sub-location
-              </button>
-            </div>
-            <ul className="sub-list">
-              {loc.sub_locations.map((s) => (
-                <li key={s.id}>{s.name}</li>
-              ))}
-              {loc.sub_locations.length === 0 && <li className="muted">No sub-locations yet.</li>}
-            </ul>
-          </article>
-        ))}
-        {tree.length === 0 && (
-          <div className="empty">
-            <h2>No locations</h2>
-            <p className="muted">Create a location if you want to filter the live board by plant or line.</p>
-          </div>
-        )}
-      </div>
+      {tree.length === 0 ? (
+        <EmptyState title="No locations">Create a location if you want to filter the live board by plant or line.</EmptyState>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {tree.map((loc) => (
+            <article key={loc.id} className="card card-border bg-base-100 shadow-sm">
+              <div className="card-body">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <h2 className="card-title text-pretty" title={loc.name}>
+                    {loc.name}
+                  </h2>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      setParent(loc);
+                      setName("");
+                      setOpen("sub");
+                    }}
+                  >
+                    Add sub-location
+                  </button>
+                </div>
+                <ul className="list">
+                  {loc.sub_locations.map((s) => (
+                    <li key={s.id} className="list-row px-0">
+                      <span>{s.name}</span>
+                    </li>
+                  ))}
+                  {loc.sub_locations.length === 0 && (
+                    <li className="list-row px-0 text-base-content/60">No sub-locations yet.</li>
+                  )}
+                </ul>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
 
       {open && (
         <Modal title={open === "loc" ? "Add location" : `Add sub-location in ${parent?.name}`} onClose={() => setOpen(null)}>
-          <form className="stack" onSubmit={submit}>
-            <label>
-              Name
-              <input required value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+          <form className="flex flex-col gap-3" onSubmit={submit}>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Name</legend>
+              <input className="input w-full" required value={name} onChange={(e) => setName(e.target.value)} />
+            </fieldset>
+            <div className="modal-action">
+              <button type="button" className="btn btn-ghost" onClick={() => setOpen(null)}>
                 Cancel
               </button>
-              <button className="btn primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy}>
+                {busy ? <span className="loading loading-spinner"></span> : null}
                 {busy ? "Saving…" : "Save"}
               </button>
             </div>

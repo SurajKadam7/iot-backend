@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
+import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
+import { PageHeader } from "../components/PageHeader";
 import type { Device, Location, SubLocation } from "../types";
 
 export function Devices() {
@@ -89,94 +91,104 @@ export function Devices() {
   }
 
   return (
-    <section className="page">
-      <header className="page-head">
-        <div className="page-copy">
-          <h1>Devices</h1>
-          <p className="muted">Register devices that already have certificates in IoT Core. Identifier is the MQTT topic id.</p>
-        </div>
-        <button className="btn primary" type="button" onClick={startCreate}>
-          Add device
-        </button>
-      </header>
+    <section className="flex flex-col gap-5">
+      <PageHeader
+        title="Devices"
+        description="Register devices that already have certificates in IoT Core. Identifier is the MQTT topic id."
+        actions={
+          <button className="btn btn-primary" type="button" onClick={startCreate}>
+            Add device
+          </button>
+        }
+      />
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <div role="alert" className="alert alert-error alert-soft">
+          <span>{error}</span>
+        </div>
       )}
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Identifier</th>
-              <th>Location</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((d) => (
-              <tr key={d.id}>
-                <td data-label="Name" title={d.name}>
-                  {d.name}
-                </td>
-                <td data-label="Identifier">
-                  <code title={d.device_identifier}>{d.device_identifier}</code>
-                </td>
-                <td className="muted" data-label="Location" title={[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}>
-                  {[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}
-                </td>
-                <td data-label="Status">
-                  <span className={`pill ${d.status}`}>{d.status}</span>
-                </td>
-                <td className="row-actions" data-label="Actions">
-                  <button type="button" className="btn ghost" onClick={() => startEdit(d)}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="btn ghost danger"
-                    onClick={() => {
-                      setActive(d);
-                      setOpen("delete");
-                    }}
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {devices.length === 0 && (
+      {devices.length === 0 ? (
+        <EmptyState title="No devices yet">Register a device to start receiving live telemetry.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  No devices yet.
-                </td>
+                <th>Name</th>
+                <th>Identifier</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {devices.map((d) => (
+                <tr key={d.id}>
+                  <td className="font-medium" title={d.name}>
+                    {d.name}
+                  </td>
+                  <td>
+                    <kbd className="kbd kbd-sm" title={d.device_identifier}>
+                      {d.device_identifier}
+                    </kbd>
+                  </td>
+                  <td className="text-base-content/60" title={[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}>
+                    {[d.location_name, d.sub_location_name].filter(Boolean).join(" / ") || "—"}
+                  </td>
+                  <td>
+                    <span className={`badge badge-soft ${d.status === "active" ? "badge-success" : ""}`}>
+                      {d.status}
+                    </span>
+                  </td>
+                  <td className="text-end">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(d)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-error btn-sm"
+                        onClick={() => {
+                          setActive(d);
+                          setOpen("delete");
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {(open === "create" || open === "edit") && (
         <Modal title={open === "create" ? "Add device" : "Edit device"} onClose={() => setOpen(null)}>
-          <form className="stack" onSubmit={onSubmit}>
-            <label>
-              Display name
-              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </label>
-            <label>
-              Device identifier
+          <form className="flex flex-col gap-3" onSubmit={onSubmit}>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Display name</legend>
               <input
+                className="input w-full"
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </fieldset>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Device identifier</legend>
+              <input
+                className="input w-full"
                 required
                 disabled={open === "edit"}
                 value={form.device_identifier}
                 onChange={(e) => setForm({ ...form, device_identifier: e.target.value })}
               />
-            </label>
-            <label>
-              Sub-location
+            </fieldset>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Sub-location</legend>
               <select
+                className="select w-full"
                 value={form.sub_location_id}
                 onChange={(e) => setForm({ ...form, sub_location_id: e.target.value })}
               >
@@ -187,19 +199,24 @@ export function Devices() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Status
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            </fieldset>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Status</legend>
+              <select
+                className="select w-full"
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+              >
                 <option value="active">active</option>
                 <option value="inactive">inactive</option>
               </select>
-            </label>
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+            </fieldset>
+            <div className="modal-action">
+              <button type="button" className="btn btn-ghost" onClick={() => setOpen(null)}>
                 Cancel
               </button>
-              <button className="btn primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy}>
+                {busy ? <span className="loading loading-spinner"></span> : null}
                 {busy ? "Saving…" : "Save"}
               </button>
             </div>
@@ -213,11 +230,12 @@ export function Devices() {
             Remove <strong>{active.name}</strong> from this organization? It will leave the live board. Certificate
             provisioning is managed outside this app.
           </p>
-          <div className="modal-actions">
-            <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+          <div className="modal-action">
+            <button type="button" className="btn btn-ghost" onClick={() => setOpen(null)}>
               Cancel
             </button>
-            <button type="button" className="btn danger" disabled={busy} onClick={() => void onDelete()}>
+            <button type="button" className="btn btn-error" disabled={busy} onClick={() => void onDelete()}>
+              {busy ? <span className="loading loading-spinner"></span> : null}
               {busy ? "Removing…" : "Remove"}
             </button>
           </div>

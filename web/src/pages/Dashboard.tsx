@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { DeviceWidget } from "../components/DeviceWidget";
+import { EmptyState } from "../components/EmptyState";
+import { SearchIcon } from "../components/icons";
+import { PageHeader } from "../components/PageHeader";
 import type { ConnectionState, Device, Location, Reading } from "../types";
 import { connectLive } from "../ws";
 
@@ -70,65 +73,70 @@ export function Dashboard() {
   const liveCount = filtered.filter((d) => readings[d.id]).length;
 
   return (
-    <section className="page">
-      <header className="page-head">
-        <div className="page-copy">
-          <h1>Live board</h1>
-          <p className="muted">
-            Latest temperature, pressure, and humidity. Units as published by devices (°C, hPa, %RH).
-          </p>
-        </div>
-        <div className={`conn ${conn}`} aria-live="polite">
-          <span className="dot" />
-          {labelFor(conn)}
-        </div>
-      </header>
-      <div className="toolbar">
-        <label className="grow">
-          <span className="sr-only">Search devices</span>
+    <section className="flex flex-col gap-5">
+      <PageHeader
+        title="Live board"
+        description="Latest temperature, pressure, and humidity. Units as published by devices (°C, hPa, %RH)."
+        actions={<ConnectionBadge conn={conn} />}
+      />
+      <div className="flex flex-wrap items-stretch gap-3">
+        <label className="input min-w-0 flex-1">
+          <SearchIcon className="size-4 opacity-50" />
           <input
+            type="search"
             placeholder="Search name or identifier"
+            aria-label="Search devices"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <label className="toolbar-filter">
-          <span className="sr-only">Filter by location</span>
-          <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-            <option value="">All locations</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="stat">
+        <select
+          className="select w-full sm:w-56"
+          aria-label="Filter by location"
+          value={locationId}
+          onChange={(e) => setLocationId(e.target.value)}
+        >
+          <option value="">All locations</option>
+          {locations.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center font-mono text-sm text-base-content/60">
           {liveCount}/{filtered.length} live
         </div>
       </div>
       {loadError && (
-        <p className="error" role="alert">
-          {loadError}
-        </p>
+        <div role="alert" className="alert alert-error alert-soft">
+          <span>{loadError}</span>
+        </div>
       )}
       {filtered.length === 0 ? (
-        <div className="empty">
-          <h2>No devices to show</h2>
-          <p className="muted">
-            {devices.length === 0
-              ? "An admin needs to register devices for this organization."
-              : "Try a different search or location filter."}
-          </p>
-        </div>
+        <EmptyState title="No devices to show">
+          {devices.length === 0
+            ? "An admin needs to register devices for this organization."
+            : "Try a different search or location filter."}
+        </EmptyState>
       ) : (
-        <div className="board">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((d) => (
             <DeviceWidget key={d.id} device={d} reading={readings[d.id]} flash={flash[d.id]} />
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+function ConnectionBadge({ conn }: { conn: ConnectionState }) {
+  const statusClass =
+    conn === "live" ? "status-success" : conn === "offline" ? "status-error" : "status-warning";
+  return (
+    <div className="badge badge-outline gap-2 py-3" aria-live="polite">
+      <span className={`status ${statusClass}`}></span>
+      {labelFor(conn)}
+    </div>
   );
 }
 

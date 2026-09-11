@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { APP_NAME } from "./brand";
+import { AppearanceProvider } from "./theme";
 import "./styles.css";
 
 if (APP_NAME) {
@@ -11,8 +12,10 @@ if (APP_NAME) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <AppearanceProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </AppearanceProvider>
   </React.StrictMode>,
 );
