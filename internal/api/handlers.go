@@ -20,24 +20,57 @@ import (
 	"github.com/surajkadam7/iot-backend/internal/auth"
 	"github.com/surajkadam7/iot-backend/internal/config"
 	"github.com/surajkadam7/iot-backend/internal/db"
+	"github.com/surajkadam7/iot-backend/internal/exportjob"
 	"github.com/surajkadam7/iot-backend/internal/models"
 	"github.com/surajkadam7/iot-backend/internal/repository"
 	"github.com/surajkadam7/iot-backend/internal/state"
+	"github.com/surajkadam7/iot-backend/internal/storage"
 	"github.com/surajkadam7/iot-backend/internal/ws"
 )
 
 type Server struct {
-	cfg       config.Config
-	log       *slog.Logger
-	pool      *pgxpool.Pool
-	repo      repository.Store
-	store     *state.Store
-	validator *auth.Validator
-	hub       *ws.Hub
+	cfg          config.Config
+	log          *slog.Logger
+	pool         *pgxpool.Pool
+	repo         repository.Store
+	store        *state.Store
+	validator    *auth.Validator
+	hub          *ws.Hub
+	objects      storage.Store
+	exportWorker *exportjob.Worker
 }
 
-func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool, repo repository.Store, store *state.Store, validator *auth.Validator, hub *ws.Hub) *Server {
-	return &Server{cfg: cfg, log: log, pool: pool, repo: repo, store: store, validator: validator, hub: hub}
+type Option func(*Server)
+
+func WithObjectStore(objects storage.Store) Option {
+	return func(s *Server) {
+		s.objects = objects
+		if objects != nil {
+			s.exportWorker = exportjob.New(s.repo, objects, s.log, s.cfg.ExportPrefix, s.cfg.ExportPollInterval)
+		}
+	}
+}
+
+func New(cfg config.Config, log *slog.Logger, pool *pgxpool.Pool, repo repository.Store, store *state.Store, validator *auth.Validator, hub *ws.Hub, opts ...Option) *Server {
+	s := &Server{cfg: cfg, log: log, pool: pool, repo: repo, store: store, validator: validator, hub: hub}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+func (s *Server) StartBackground(ctx context.Context) {
+	if s.exportWorker == nil {
+		return
+	}
+	go s.exportWorker.Run(ctx)
+}
+
+func (s *Server) ProcessExportJobs(ctx context.Context) (int, error) {
+	if s.exportWorker == nil {
+		return 0, nil
+	}
+	return s.exportWorker.ProcessQueued(ctx)
 }
 
 func (s *Server) Handler() http.Handler {
@@ -51,7 +84,7 @@ func (s *Server) Handler() http.Handler {
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: false,
-		MaxAge:            300,
+		MaxAge:           300,
 	}))
 
 	r.Get("/api/health", s.health)
@@ -77,6 +110,9 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/devices", s.requireAdmin(s.createDevice))
 		r.Patch("/api/devices/{id}", s.requireAdmin(s.patchDevice))
 		r.Delete("/api/devices/{id}", s.requireAdmin(s.deleteDevice))
+		r.Post("/api/exports", s.requireCanExport(s.createExport))
+		r.Get("/api/exports/{id}", s.requireCanExport(s.getExport))
+		r.Get("/api/exports/{id}/file", s.requireCanExport(s.downloadExport))
 	})
 
 	if s.hub != nil {
@@ -177,6 +213,17 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) requireCanExport(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, _ := auth.FromContext(r.Context())
+		if !p.CanExport {
+			writeError(w, http.StatusForbidden, "forbidden", "export permission required")
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) principal(r *http.Request) auth.Principal {
 	p, _ := auth.FromContext(r.Context())
 	return p
@@ -191,7 +238,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":           p.UserID,
-		"organization_id":  p.OrganizationID,
+		"organization_id":   p.OrganizationID,
 		"organization_name": org.Name,
 		"email":             p.Email,
 		"role":              p.Role,

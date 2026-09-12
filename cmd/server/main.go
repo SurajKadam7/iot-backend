@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/surajkadam7/iot-backend/internal/api"
+	"github.com/surajkadam7/iot-backend/internal/archive"
 	"github.com/surajkadam7/iot-backend/internal/auth"
 	"github.com/surajkadam7/iot-backend/internal/config"
 	"github.com/surajkadam7/iot-backend/internal/db"
@@ -19,6 +20,7 @@ import (
 	"github.com/surajkadam7/iot-backend/internal/observability"
 	"github.com/surajkadam7/iot-backend/internal/repository"
 	"github.com/surajkadam7/iot-backend/internal/state"
+	"github.com/surajkadam7/iot-backend/internal/storage"
 	"github.com/surajkadam7/iot-backend/internal/telemetry"
 	"github.com/surajkadam7/iot-backend/internal/ws"
 	"github.com/surajkadam7/iot-backend/migrations"
@@ -63,6 +65,23 @@ func run() error {
 	hub := ws.NewHub(validator, repo, store, cfg.FrontendOrigin, log)
 	ingest := telemetry.New(repo, store, hub, log)
 
+	objects, err := storage.Open(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	var archWriter *archive.Writer
+	if objects != nil {
+		archWriter = archive.NewWriter(objects, log, archive.WriterOptions{
+			FlushRows:     cfg.ArchiveFlushRows,
+			FlushInterval: cfg.ArchiveFlushInterval,
+		})
+		ingest.AddSink(archWriter)
+		go archWriter.Run(ctx)
+		log.Info("archive writer started", "backend", cfg.ArchiveBackend, "s3_bucket", cfg.S3Bucket, "dir", cfg.ArchiveDir)
+	} else {
+		log.Info("archive disabled")
+	}
+
 	if cfg.MQTTEnabled {
 		sub, err := iot.NewSubscriber(cfg, ingest, log)
 		if err != nil {
@@ -76,9 +95,11 @@ func run() error {
 		log.Info("mqtt disabled")
 	}
 
+	apiServer := api.New(cfg, log, pool, repo, store, validator, hub, api.WithObjectStore(objects))
+	apiServer.StartBackground(ctx)
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(cfg, log, pool, repo, store, validator, hub).Handler(),
+		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -99,5 +120,10 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if archWriter != nil {
+		if err := archWriter.Flush(shutdownCtx); err != nil {
+			log.Error("archive flush on shutdown", "err", err)
+		}
+	}
 	return srv.Shutdown(shutdownCtx)
 }

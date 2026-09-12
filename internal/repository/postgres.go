@@ -47,6 +47,11 @@ type Store interface {
 	CreateDevice(ctx context.Context, d models.Device) (models.Device, error)
 	UpdateDevice(ctx context.Context, orgID, id uuid.UUID, name *string, status *string, subLocationID **uuid.UUID) (models.Device, error)
 	DeleteDevice(ctx context.Context, orgID, id uuid.UUID) error
+
+	CreateExportJob(ctx context.Context, job models.ExportJob) (models.ExportJob, error)
+	GetExportJob(ctx context.Context, orgID, id uuid.UUID) (models.ExportJob, error)
+	ClaimNextExportJob(ctx context.Context) (models.ExportJob, error)
+	FinishExportJob(ctx context.Context, id uuid.UUID, status, objectKey, errorMessage string) error
 }
 
 type Postgres struct {
@@ -490,4 +495,91 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Code == "23505"
 	}
 	return strings.Contains(err.Error(), "duplicate key")
+}
+
+const exportSelect = `
+SELECT id, organization_id, requested_by, status, from_ts, to_ts, device_ids, object_key, error_message, created_at, updated_at
+FROM export_jobs`
+
+func (p *Postgres) CreateExportJob(ctx context.Context, job models.ExportJob) (models.ExportJob, error) {
+	if job.DeviceIDs == nil {
+		job.DeviceIDs = []string{}
+	}
+	row := p.pool.QueryRow(ctx, `
+		INSERT INTO export_jobs (organization_id, requested_by, status, from_ts, to_ts, device_ids)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, organization_id, requested_by, status, from_ts, to_ts, device_ids, object_key, error_message, created_at, updated_at`,
+		job.OrganizationID, job.RequestedBy, models.ExportQueued, job.FromTS, job.ToTS, job.DeviceIDs)
+	return scanExportJob(row)
+}
+
+func (p *Postgres) GetExportJob(ctx context.Context, orgID, id uuid.UUID) (models.ExportJob, error) {
+	job, err := scanExportJob(p.pool.QueryRow(ctx, exportSelect+` WHERE id=$1 AND organization_id=$2`, id, orgID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.ExportJob{}, ErrNotFound
+	}
+	return job, err
+}
+
+func (p *Postgres) ClaimNextExportJob(ctx context.Context) (models.ExportJob, error) {
+	job, err := scanExportJob(p.pool.QueryRow(ctx, `
+		UPDATE export_jobs SET status=$1, updated_at=now()
+		WHERE id = (
+			SELECT id FROM export_jobs
+			WHERE status=$2
+			ORDER BY created_at
+			FOR UPDATE SKIP LOCKED
+			LIMIT 1
+		)
+		RETURNING id, organization_id, requested_by, status, from_ts, to_ts, device_ids, object_key, error_message, created_at, updated_at`,
+		models.ExportRunning, models.ExportQueued))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.ExportJob{}, ErrNotFound
+	}
+	return job, err
+}
+
+func (p *Postgres) FinishExportJob(ctx context.Context, id uuid.UUID, status, objectKey, errorMessage string) error {
+	var key any
+	if objectKey != "" {
+		key = objectKey
+	}
+	var msg any
+	if errorMessage != "" {
+		msg = errorMessage
+	}
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE export_jobs
+		SET status=$1, object_key=$2, error_message=$3, updated_at=now()
+		WHERE id=$4`, status, key, msg, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func scanExportJob(row rowScanner) (models.ExportJob, error) {
+	var j models.ExportJob
+	var objectKey *string
+	var errMsg *string
+	err := row.Scan(
+		&j.ID, &j.OrganizationID, &j.RequestedBy, &j.Status, &j.FromTS, &j.ToTS, &j.DeviceIDs,
+		&objectKey, &errMsg, &j.CreatedAt, &j.UpdatedAt,
+	)
+	if err != nil {
+		return models.ExportJob{}, err
+	}
+	if objectKey != nil {
+		j.ObjectKey = *objectKey
+	}
+	if errMsg != nil {
+		j.ErrorMessage = *errMsg
+	}
+	if j.DeviceIDs == nil {
+		j.DeviceIDs = []string{}
+	}
+	return j, nil
 }

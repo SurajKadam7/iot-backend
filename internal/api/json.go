@@ -117,7 +117,7 @@ func deviceJSON(d models.Device) map[string]any {
 	m := map[string]any{
 		"id":                d.ID,
 		"organization_id":   d.OrganizationID,
-		"device_identifier":  d.DeviceIdentifier,
+		"device_identifier": d.DeviceIdentifier,
 		"name":              d.Name,
 		"status":            d.Status,
 		"created_at":        d.CreatedAt.UTC().Format(time.RFC3339Nano),

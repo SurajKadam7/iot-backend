@@ -27,15 +27,22 @@ type Broadcaster interface {
 	Broadcast(orgID uuid.UUID, reading models.Reading)
 }
 
+// DeviceLookup is the subset of persistence ingest needs before live/archive sinks run.
+type DeviceLookup interface {
+	GetDeviceByIdentifier(ctx context.Context, identifier string) (models.Device, error)
+	GetOrganization(ctx context.Context, id uuid.UUID) (models.Organization, error)
+}
+
 type Ingestor struct {
-	repo  repository.Store
+	repo  DeviceLookup
 	store *state.Store
 	hub   Broadcaster
 	log   *slog.Logger
 	now   func() time.Time
+	sinks []Sink
 }
 
-func New(repo repository.Store, store *state.Store, hub Broadcaster, log *slog.Logger) *Ingestor {
+func New(repo DeviceLookup, store *state.Store, hub Broadcaster, log *slog.Logger) *Ingestor {
 	return &Ingestor{
 		repo:  repo,
 		store: store,
@@ -43,6 +50,15 @@ func New(repo repository.Store, store *state.Store, hub Broadcaster, log *slog.L
 		log:   log,
 		now:   time.Now,
 	}
+}
+
+// AddSink registers a post-authorization handler (CSV archive, later Firehose).
+// Call only during process wiring, before MQTT starts.
+func (i *Ingestor) AddSink(s Sink) {
+	if s == nil {
+		return
+	}
+	i.sinks = append(i.sinks, s)
 }
 
 func (i *Ingestor) HandleMQTT(ctx context.Context, topic string, payload []byte) error {
@@ -81,7 +97,25 @@ func (i *Ingestor) HandleMQTT(ctx context.Context, topic string, payload []byte)
 	if i.hub != nil {
 		i.hub.Broadcast(device.OrganizationID, reading)
 	}
+	// Topic orgId is not authorization; archive keys use the devices-table org.
+	i.dispatch(ctx, Record{
+		OrganizationID:   device.OrganizationID,
+		DeviceID:         device.ID,
+		DeviceIdentifier: device.DeviceIdentifier,
+		Temperature:      reading.Temperature,
+		Pressure:         reading.Pressure,
+		Humidity:         reading.Humidity,
+		TS:               reading.TS,
+	})
 	return nil
+}
+
+func (i *Ingestor) dispatch(ctx context.Context, rec Record) {
+	for _, sink := range i.sinks {
+		if err := sink.HandleRecord(ctx, rec); err != nil {
+			i.log.Error("telemetry sink failed", "sink", sink.Name(), "device_identifier", rec.DeviceIdentifier, "err", err)
+		}
+	}
 }
 
 func ParsePayload(raw []byte, receiveTime time.Time) (models.Reading, error) {

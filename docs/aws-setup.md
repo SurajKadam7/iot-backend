@@ -268,6 +268,10 @@ Do **not** attach a bucket lifecycle that deletes archive objects in MVP.
 
 Export: `POST /api/exports` and `GET /api/exports/{id}` require JWT `can_export`. Jobs must read only `org/{caller organization_id}/...`. The UI shows Export only for those users.
 
+## Later: Firehose (delayed)
+
+Not in Phase 1. When added: IoT Rule on `org/+/device/+/telemetry` → Firehose → S3 so archive continues if EC2 is down. Do not build or require that for Phase 1.
+
 ## Frontend hosting
 
 - Build: `cd web && npm ci && npm run build`

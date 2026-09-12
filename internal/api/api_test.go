@@ -14,11 +14,14 @@ import (
 	"github.com/surajkadam7/iot-backend/internal/models"
 	"github.com/surajkadam7/iot-backend/internal/observability"
 	"github.com/surajkadam7/iot-backend/internal/state"
+	"github.com/surajkadam7/iot-backend/internal/storage"
 )
 
 type fixture struct {
 	handler http.Handler
+	server  *Server
 	store   *memStore
+	objects *storage.Memory
 	v       *auth.Validator
 	orgA    uuid.UUID
 	orgB    uuid.UUID
@@ -73,9 +76,10 @@ func setupAPI(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := config.Config{AuthMode: "local", JWTSecret: "test-secret-please-change", JWTIssuer: "iot-local", JWTExpiry: time.Hour, FrontendOrigin: "*"}
-	h := New(cfg, observability.NewLogger("error", "text"), nil, ms, state.New(), v, nil).Handler()
-	return &fixture{handler: h, store: ms, v: v, orgA: orgA, orgB: orgB, adminA: adminA, userA: userA, adminB: adminB, ops: ops, devA: devA, devB: devB}
+	cfg := config.Config{AuthMode: "local", JWTSecret: "test-secret-please-change", JWTIssuer: "iot-local", JWTExpiry: time.Hour, FrontendOrigin: "*", ExportMaxRange: 31 * 24 * time.Hour, ExportPresignTTL: time.Hour}
+	objects := storage.NewMemory()
+	srv := New(cfg, observability.NewLogger("error", "text"), nil, ms, state.New(), v, nil, WithObjectStore(objects))
+	return &fixture{handler: srv.Handler(), server: srv, store: ms, objects: objects, v: v, orgA: orgA, orgB: orgB, adminA: adminA, userA: userA, adminB: adminB, ops: ops, devA: devA, devB: devB}
 }
 
 func (f *fixture) token(t *testing.T, u models.User) string {

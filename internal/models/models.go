@@ -27,7 +27,7 @@ type Organization struct {
 type User struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
-	CognitoSubject  string
+	CognitoSubject string
 	Email          string
 	Role           string
 	CanExport      bool
@@ -59,9 +59,9 @@ type Device struct {
 	Status           string
 	CreatedAt        time.Time
 
-	LocationID       *uuid.UUID
-	LocationName     *string
-	SubLocationName  *string
+	LocationID      *uuid.UUID
+	LocationName    *string
+	SubLocationName *string
 }
 
 type Reading struct {
@@ -71,6 +71,27 @@ type Reading struct {
 	Humidity    float64   `json:"humidity"`
 	TS          time.Time `json:"ts"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+const (
+	ExportQueued    = "queued"
+	ExportRunning   = "running"
+	ExportSucceeded = "succeeded"
+	ExportFailed    = "failed"
+)
+
+type ExportJob struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	RequestedBy    uuid.UUID
+	Status         string
+	FromTS         time.Time
+	ToTS           time.Time
+	DeviceIDs      []string
+	ObjectKey      string
+	ErrorMessage   string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 func (u User) IsAdmin() bool {

@@ -1,12 +1,12 @@
-# Local development (live path + upcoming CSV archive)
+# Local development (live path + CSV archive)
 
-This repository currently implements the **live** path from `requirement.md` and `architecture.md`:
+This repository implements the Phase 1 path from `requirement.md` and `architecture.md`:
 
-MQTT → Go backend (in-memory latest telemetry) → REST + WebSocket → React widgets.
+MQTT → Go backend (in-memory latest telemetry **and** batched CSV archive) → REST + WebSocket → React widgets.
 
-MVP also specifies: the **same Go MQTT subscription** writes CSV history to S3, and users with `can_export` get an Export button. That archive/export code is not in the live-path binary yet; follow `architecture.md` when implementing it.
+Locally the archive is a directory (`ARCHIVE_DIR=data/archive`) unless `S3_BUCKET` is set. Users with `can_export` can call `POST /api/exports` and `GET /api/exports/{id}`. The Export UI button is still frontend work.
 
-**Firehose is delayed** past Phase 1. Do **not** delete old S3 objects in Phase 1.
+**Firehose is delayed** past Phase 1. Do **not** delete old archive objects in Phase 1.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ MVP also specifies: the **same Go MQTT subscription** writes CSV history to S3, 
 - PostgreSQL 16
 - An MQTT broker (local Mosquitto, or AWS IoT Core)
 
-Optional: Docker, if you prefer `docker compose up` for Postgres + Mosquitto. For archive/export locally, an S3-compatible bucket (AWS S3 or MinIO) once that code lands.
+Optional: Docker, if you prefer `docker compose up` for Postgres + Mosquitto. For S3 locally, set `S3_BUCKET` (and optionally `S3_ENDPOINT` for MinIO). With an empty bucket the server writes CSV under `data/archive`.
 
 ## Configure
 
@@ -27,7 +27,7 @@ cp web/.env.example web/.env
 
 `AUTH_MODE=local` enables `POST /api/dev/login`. That endpoint must stay off in production (`AUTH_MODE=cognito`).
 
-When archive/export is implemented, set S3 bucket/region/prefix in `.env` (see `.env.example`). Leave AWS keys out of the browser.
+When `S3_BUCKET` is empty, archive files land in `ARCHIVE_DIR` (default `data/archive`). Leave AWS keys out of the browser.
 
 ## Database and seed
 
@@ -57,7 +57,7 @@ MQTT topic example:
 
 `org/00000000-0000-4000-8000-000000000001/device/line-a-01/telemetry`
 
-Archive CSV prefix (when implemented):
+Archive CSV prefix:
 
 `org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/`
 

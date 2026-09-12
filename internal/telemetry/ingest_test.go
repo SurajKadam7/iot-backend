@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"testing"
@@ -25,57 +26,7 @@ func (f *fakeRepo) GetOrganization(_ context.Context, id uuid.UUID) (models.Orga
 	}
 	return o, nil
 }
-func (f *fakeRepo) ListOrganizations(context.Context) ([]models.Organization, error) { return nil, nil }
-func (f *fakeRepo) GetUserByID(context.Context, uuid.UUID) (models.User, error) {
-	return models.User{}, repository.ErrNotFound
-}
-func (f *fakeRepo) GetUserBySubject(context.Context, string) (models.User, error) {
-	return models.User{}, repository.ErrNotFound
-}
-func (f *fakeRepo) GetUserByEmail(context.Context, string) (models.User, error) {
-	return models.User{}, repository.ErrNotFound
-}
-func (f *fakeRepo) GetUser(context.Context, uuid.UUID, uuid.UUID) (models.User, error) {
-	return models.User{}, repository.ErrNotFound
-}
-func (f *fakeRepo) ListUsers(context.Context, uuid.UUID) ([]models.User, error) { return nil, nil }
-func (f *fakeRepo) ListAllUsers(context.Context) ([]models.User, error)         { return nil, nil }
-func (f *fakeRepo) CountUsers(context.Context, uuid.UUID) (int, error)          { return 0, nil }
-func (f *fakeRepo) CountActiveAdmins(context.Context, uuid.UUID) (int, error)   { return 0, nil }
-func (f *fakeRepo) CreateUser(context.Context, models.User) (models.User, error) {
-	return models.User{}, nil
-}
-func (f *fakeRepo) UpdateUser(context.Context, uuid.UUID, uuid.UUID, *string, *bool, *string) (models.User, error) {
-	return models.User{}, nil
-}
-func (f *fakeRepo) DeleteUser(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (f *fakeRepo) ListLocations(context.Context, uuid.UUID) ([]models.Location, error) {
-	return nil, nil
-}
-func (f *fakeRepo) ListAllLocations(context.Context) ([]models.Location, error) { return nil, nil }
-func (f *fakeRepo) CreateLocation(context.Context, uuid.UUID, string) (models.Location, error) {
-	return models.Location{}, nil
-}
-func (f *fakeRepo) GetLocation(context.Context, uuid.UUID, uuid.UUID) (models.Location, error) {
-	return models.Location{}, repository.ErrNotFound
-}
-func (f *fakeRepo) ListSubLocations(context.Context, uuid.UUID, uuid.UUID) ([]models.SubLocation, error) {
-	return nil, nil
-}
-func (f *fakeRepo) ListAllSubLocations(context.Context) ([]models.SubLocation, error) {
-	return nil, nil
-}
-func (f *fakeRepo) CreateSubLocation(context.Context, uuid.UUID, uuid.UUID, string) (models.SubLocation, error) {
-	return models.SubLocation{}, nil
-}
-func (f *fakeRepo) GetSubLocation(context.Context, uuid.UUID, uuid.UUID) (models.SubLocation, error) {
-	return models.SubLocation{}, repository.ErrNotFound
-}
-func (f *fakeRepo) ListDevices(context.Context, uuid.UUID) ([]models.Device, error) { return nil, nil }
-func (f *fakeRepo) ListAllDevices(context.Context) ([]models.Device, error)         { return nil, nil }
-func (f *fakeRepo) GetDevice(context.Context, uuid.UUID, uuid.UUID) (models.Device, error) {
-	return models.Device{}, repository.ErrNotFound
-}
+
 func (f *fakeRepo) GetDeviceByIdentifier(_ context.Context, identifier string) (models.Device, error) {
 	d, ok := f.devices[identifier]
 	if !ok {
@@ -83,13 +34,8 @@ func (f *fakeRepo) GetDeviceByIdentifier(_ context.Context, identifier string) (
 	}
 	return d, nil
 }
-func (f *fakeRepo) CreateDevice(context.Context, models.Device) (models.Device, error) {
-	return models.Device{}, nil
-}
-func (f *fakeRepo) UpdateDevice(context.Context, uuid.UUID, uuid.UUID, *string, *string, **uuid.UUID) (models.Device, error) {
-	return models.Device{}, nil
-}
-func (f *fakeRepo) DeleteDevice(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+
+var _ DeviceLookup = (*fakeRepo)(nil)
 
 type sink struct{ n int }
 
@@ -157,5 +103,50 @@ func TestOverwriteLatest(t *testing.T) {
 	r, _ := st.Get(devID)
 	if r.Temperature != 9 {
 		t.Fatalf("got %v", r.Temperature)
+	}
+}
+
+type captureSink struct {
+	recs []Record
+	err  error
+}
+
+func (c *captureSink) Name() string { return "capture" }
+func (c *captureSink) HandleRecord(_ context.Context, rec Record) error {
+	c.recs = append(c.recs, rec)
+	return c.err
+}
+
+func TestIngestFansOutAfterAuthorize(t *testing.T) {
+	orgID := uuid.New()
+	devID := uuid.New()
+	repo := &fakeRepo{
+		orgs: map[uuid.UUID]models.Organization{orgID: {ID: orgID, Status: models.StatusActive}},
+		devices: map[string]models.Device{
+			"known": {ID: devID, OrganizationID: orgID, DeviceIdentifier: "known", Status: models.StatusActive},
+		},
+	}
+	st := state.New()
+	cap := &captureSink{err: errors.New("sink failed")}
+	ing := New(repo, st, &sink{}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	ing.AddSink(cap)
+	topic := "org/not-the-org/device/known/telemetry"
+	if err := ing.HandleMQTT(context.Background(), topic, []byte(`{"temperature":1,"pressure":2,"humidity":3}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.Get(devID); !ok {
+		t.Fatal("live path must succeed even if a sink fails")
+	}
+	if len(cap.recs) != 1 {
+		t.Fatalf("sink calls %d", len(cap.recs))
+	}
+	if cap.recs[0].OrganizationID != orgID || cap.recs[0].DeviceIdentifier != "known" {
+		t.Fatalf("authorized record %+v", cap.recs[0])
+	}
+	if err := ing.HandleMQTT(context.Background(), topic, []byte(`not-json`)); err != ErrMalformed {
+		t.Fatalf("malformed: %v", err)
+	}
+	if len(cap.recs) != 1 {
+		t.Fatal("sink must not run for malformed payloads")
 	}
 }
