@@ -1,13 +1,13 @@
 # Architecture
 
-## Design choice (cost + no archive loss)
+## Design choice (MVP)
 
 | Path | Purpose | Durability if backend is down |
 |---|---|---|
 | MQTT → Go backend | Live latest state + WebSocket widgets | Best-effort (memory cleared on process restart) |
-| IoT Rule → Firehose → S3 | 3-month raw history / exports | **Yes** — independent of EC2 |
+| MQTT → Go backend → S3 CSV | Historical archive + exports | **Pauses** until the subscriber is back |
 
-**MVP load:** ~50 devices × ~1 event/s ≈ **50 msg/s**. Firehose is the archive path. MQTT is not the historical queue.
+**MVP load:** ~50 devices × ~1 event/s ≈ **50 msg/s**. The Go MQTT subscription is both the live path and the archive path. Firehose / IoT Rule archive is **not** used for MVP. Deleting old S3 objects is **out of scope**.
 
 ## High-level flow
 
@@ -15,17 +15,18 @@
 IoT Devices
     │ MQTT/TLS (QoS 1)  ~50 msg/s
     │ fixed JSON schema
+    │ topic: org/{orgId}/device/{deviceId}/telemetry
     ▼
 AWS IoT Core
-    ├──────── MQTT subscription ───────► Go backend on EC2 (live)
-    │                                      ├─ latest state in memory (overwrite)
-    │                                      ├─ REST API (admin + export)
-    │                                      └─ WebSocket (first-message JWT auth)
-    │
-    └─ IoT Rule ──► Firehose ──► S3
-         prefix: org/{orgId}/device/{deviceId}/date={YYYY-MM-DD}/...
-         lifecycle: 3 months
-         error action → DLQ / backup S3
+    └──────── MQTT subscription ───────► Go backend on EC2
+                                           ├─ latest state in memory (overwrite)
+                                           ├─ append CSV rows to S3 (batched)
+                                           ├─ REST API (admin + export)
+                                           └─ WebSocket (first-message JWT auth)
+
+S3
+    ├─ archive: org/{orgId}/device/{deviceId}/date={YYYY-MM-DD}/hour={HH}/...csv
+    └─ export files: short-lived CSV + pre-signed download
 
 Browser
   ├─ HTTPS → Go REST API
@@ -42,6 +43,7 @@ DNS → Route 53 | TLS → ACM | Monitoring → CloudWatch
 - **One org per user.** `users.organization_id` is required and unique membership model for MVP.
 - Cognito issues JWT with at least: `user_id` (or Cognito `sub` mapped), `organization_id`, `role` (`org_admin` | `org_user` | `platform_admin`), `can_export` (boolean).
 - REST: validate JWT on every request; scope tenant queries by claim `organization_id`. `platform_admin` may call `GET /api/internal/organizations` across tenants (read-only).
+- **Export:** `POST /api/exports` and `GET /api/exports/{id}` require `can_export`. The frontend shows the Export button **only** when `can_export` is true.
 - WebSocket **first-message auth** (over WSS):
   1. Client connects.
   2. Client must send auth message with JWT within **5 seconds** or server closes.
@@ -67,18 +69,25 @@ In-memory map: `device_id → { temperature, pressure, humidity, ts, updated_at 
 - Overwrite only when a newer valid message arrives (or always overwrite with latest valid payload for MVP simplicity).
 - Do not remove entries on a timer.
 - On process start: map empty → UI “Waiting for device to publish…” until first message per device.
-- Before updating memory: resolve `device_identifier` / topic device id to a row in `devices` for a known `organization_id`; drop unknown devices.
+- Before updating memory or writing S3: resolve `device_identifier` / topic device id to a row in `devices` for a known `organization_id`; drop unknown devices.
 
-## Archive (Firehose → S3)
+## Archive (Go MQTT → S3 CSV)
 
-Recommended object key prefix:
+One MQTT subscription (`org/+/device/+/telemetry`) feeds both live memory and archive.
 
-`org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/...`
+After a payload passes schema + device-table authorization, the process appends a CSV row:
 
-- Firehose buffering should produce batched files (not one tiny object per message).
-- S3 lifecycle: expire/delete raw telemetry after **3 months**.
+```text
+organization_id,device_identifier,temperature,pressure,humidity,ts
+```
+
+Object key prefix:
+
+`org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/...csv`
+
+- Buffer into batched objects (not one tiny object per message).
+- **Do not expire or delete archive objects in MVP.**
 - Export jobs list/read only prefixes for the caller’s `organization_id` and requested device(s)/date range.
-- Rule error action required (SQS DLQ or secondary bucket); alert on failures.
 
 ## Storage
 
@@ -89,7 +98,7 @@ Recommended object key prefix:
 | Locations / sub-locations | PostgreSQL | Optional grouping for filters |
 | Devices | PostgreSQL | Belongs to org (+ optional sub_location) |
 | Latest telemetry | Process memory | No `last_seen` column |
-| Raw telemetry | S3 via Firehose | Prefixed as above; 3-month lifecycle |
+| Raw telemetry | S3 CSV via Go MQTT subscriber | Prefixed as above; no deletion in MVP |
 | Export files | S3 | Short-lived pre-signed download |
 
 ## Database rules
@@ -101,6 +110,7 @@ Core tables (MVP):
 - `locations(id, organization_id, name, created_at)`
 - `sub_locations(id, organization_id, location_id, name, created_at)`
 - `devices(id, organization_id, sub_location_id nullable, device_identifier, name, status, created_at)`
+- `export_jobs` (or equivalent) for async export status
 
 Deferred tables/features: `invitations`, per-device ACL.
 
@@ -111,15 +121,14 @@ Constraints:
 
 ## Backend modules
 - `auth`: JWT validation + tenant/ACL context
-- `iot`: MQTT subscribe/reconnect (live)
+- `iot`: MQTT subscribe/reconnect (live + archive)
 - `telemetry`: schema validate + org device check + memory update
+- `archive`: buffer validated readings and write CSV to S3
 - `state`: concurrency-safe map (`sync.RWMutex` or equivalent)
 - `api`: REST (me, locations, devices admin, exports, health)
 - `ws`: first-message auth hub + org-scoped push
-- `export`: S3 prefix-scoped CSV job + pre-signed URL
+- `export`: S3 prefix-scoped CSV job + pre-signed URL (`can_export` only)
 - `repository`, `config`, `observability`
-
-Go backend does **not** write the historical archive.
 
 ## API sketch (MVP)
 
@@ -157,24 +166,23 @@ Deferred: email invitation APIs, per-device ACL APIs.
 - Live dashboard: **scrollable widgets** for temperature/pressure/humidity + timestamp; show waiting state when no in-memory value
 - Admin: add/edit/remove devices, locations, and org users (role + `can_export`)
 - Operator console (`platform_admin`): read-only organizations overview at `/internal`
-- Export: range + status + download (if `can_export`)
+- **Export button and page only when `can_export` is true.** Range + status + download/failure. Hidden for everyone else (including admins with `can_export` false).
 - No AWS credentials in the browser
 
 ## Export flow
-1. User with `can_export` requests export for org devices/date range (≤ 3 months).
-2. Backend verifies JWT org + ACL.
+1. User with `can_export` requests export for org devices/date range.
+2. Backend verifies JWT org + `can_export`. Reject others.
 3. Background job reads only `org/{organization_id}/...` prefixes for the range.
-4. Stream CSV to S3 (do not hold entire file in memory).
+4. Stream a downloadable CSV to S3 (do not hold the entire file in memory).
 5. Return status + short-lived pre-signed URL.
 
 ## Deployment
-- One EC2 Go process: MQTT live + REST + WebSocket
+- One EC2 Go process: MQTT live + CSV archive to S3 + REST + WebSocket
 - RDS PostgreSQL (local PG for dev OK)
-- Firehose → telemetry S3 bucket with prefix scheme + lifecycle
-- IoT Rule on `org/+/device/+/telemetry` → Firehose + error action
+- S3 bucket for archive CSV + export files; EC2 IAM: `s3:PutObject` on archive prefix, `s3:GetObject`/`ListBucket` for export jobs, `s3:PutObject` on export prefix
 - Frontend S3 + CloudFront; Route 53; ACM; CloudWatch
 - Device cert/Thing provisioning: manual/out of band for MVP
-- No ALB/Redis/DynamoDB/Kinesis Data Streams/SQS archive path
+- No ALB/Redis/DynamoDB/Kinesis Data Streams/Firehose/SQS archive path
 
 ## Scaling path
-`ALB → multiple Go instances` for API/WS when needed; keep a single active MQTT live subscriber or redesign fan-out carefully. Keep Firehose archive path independent.
+`ALB → multiple Go instances` for API/WS when needed; keep a **single active MQTT subscriber** (live + archive) or redesign fan-out carefully so CSV is not duplicated.

@@ -1,12 +1,14 @@
-# AWS setup notes (live path + archive configuration)
+# AWS setup notes (live MQTT + S3 CSV archive)
 
-These notes describe how to host the Phase 1 live application. **This repository does not create AWS resources** and does not claim they are deployed.
+These notes describe how to host the MVP. **This repository does not create AWS resources** and does not claim they are deployed.
 
 Certificate / Thing provisioning is **manual and out of scope** for the app.
 
+Archive is **not Firehose**. The Go process subscribes to MQTT and writes CSV to S3. MVP does **not** expire or delete old archive objects.
+
 ## First live AWS test (laptop → IoT Core → EC2 → UI)
 
-Use this path to prove live widgets on AWS **without** Cognito, RDS, Firehose, or HTTPS.
+Use this path to prove live widgets on AWS **without** Cognito, RDS, S3 archive, or HTTPS.
 
 ```text
 Laptop cmd/pub  --MQTT/TLS 8883 publish-->  AWS IoT Core
@@ -190,15 +192,15 @@ If the test client sees messages but the UI stays waiting, the topic `device_ide
 
 Production policy for a single device should allow only that identifier, for example publish `org/{thatOrg}/device/{thatIdentifier}/telemetry`. Still insert a matching row in `devices` (admin UI or seed). Thing provisioning remains outside this application.
 
-## What Phase 1 runs on EC2
+## What the Go process runs on EC2
 
 One Go process:
 
-- MQTT subscribe (live latest state only)
-- REST (`/api/health`, `/api/ready`, `/api/me`, locations, devices)
+- MQTT subscribe (`org/+/device/+/telemetry`) — live latest state **and** CSV archive to S3
+- REST (`/api/health`, `/api/ready`, `/api/me`, locations, devices, users, exports)
 - WebSocket `/ws` with first-message JWT auth (5s timeout)
 
-Put the binary on a single EC2 instance with a public HTTPS endpoint (or serve the UI from CloudFront and API from the instance). Architecture forbids ALB/Redis/DynamoDB/Kinesis Data Streams/SQS archive workers for MVP.
+Put the binary on a single EC2 instance with a public HTTPS endpoint (or serve the UI from CloudFront and API from the instance). Architecture forbids ALB/Redis/DynamoDB/Kinesis Data Streams/Firehose/SQS archive workers for MVP.
 
 ## PostgreSQL / RDS
 
@@ -213,7 +215,7 @@ Every tenant table is scoped by `organization_id`. JWT `organization_id` is the 
    - `user_id` (UUID of `users.id`) or rely on `sub` = `users.cognito_subject`
    - `organization_id`
    - `role` = `org_admin` | `org_user`
-   - `can_export` (boolean; org admins can change the Postgres flag; CSV export APIs are not in Phase 1)
+   - `can_export` (boolean; org admins can change the Postgres flag; Export button and `POST/GET /api/exports` only when true)
 3. Backend env:
    - `AUTH_MODE=cognito`
    - `JWT_ISSUER=https://cognito-idp.{region}.amazonaws.com/{poolId}`
@@ -238,23 +240,33 @@ Production / per-device:
    - `MQTT_BROKER=ssl://xxxxx-ats.iot.{region}.amazonaws.com:8883`
    - `MQTT_SUB_CERT_PATH` / `MQTT_SUB_KEY_PATH` / `MQTT_SUB_CA_CERT_PATH` (Amazon Root CA 1)
 6. QoS 1. Duplicates overwrite in-memory latest state.
-7. Unknown `device_identifier` values are dropped. Topic `orgId` is not authorization.
+7. Unknown `device_identifier` values are dropped. Topic `orgId` is not authorization. The same check applies before a CSV row is written to S3.
 
-After EC2 restart, in-memory state is empty until the next publish.
+After EC2 restart, in-memory state is empty until the next publish. CSV archive writes resume when MQTT is connected again.
 
-## Archive path (configured in AWS, not in this binary)
+## Archive path (Go MQTT → S3 CSV)
 
-Architecture requires archive **independent of the Go process**:
+The backend subscriber writes CSV after a valid ingest. Do **not** configure IoT Rule → Firehose for MVP.
 
 ```
-IoT Rule on org/+/device/+/telemetry
-  → Amazon Data Firehose
-  → S3 prefix org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/...
-  → lifecycle expire after 3 months
-  → rule error action: SQS DLQ or backup bucket + alarm
+MQTT org/+/device/+/telemetry
+  → Go subscriber (validate device + schema)
+  → in-memory latest state (live UI)
+  → batched CSV PutObject
+      org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/...csv
 ```
 
-The Go backend **must not write** the historical archive. Phase 1 does **not** implement `POST /api/exports`. When export is built later, jobs must read only the caller’s `org/{organization_id}/...` prefixes.
+CSV header: `organization_id,device_identifier,temperature,pressure,humidity,ts`
+
+EC2 instance role (or env credentials on the box — never in the browser):
+
+- `s3:PutObject` on the archive prefix
+- `s3:ListBucket` + `s3:GetObject` on archive prefixes (export jobs)
+- `s3:PutObject` + `s3:GetObject` on the export-files prefix (pre-signed downloads)
+
+Do **not** attach a bucket lifecycle that deletes archive objects in MVP.
+
+Export: `POST /api/exports` and `GET /api/exports/{id}` require JWT `can_export`. Jobs must read only `org/{caller organization_id}/...`. The UI shows Export only for those users.
 
 ## Frontend hosting
 
@@ -266,7 +278,7 @@ The Go backend **must not write** the historical archive. Phase 1 does **not** i
 
 ## Monitoring
 
-CloudWatch: EC2 CPU/disk, RDS, IoT rule errors, Firehose delivery errors, Go process logs (`LOG_FORMAT=json`). Do not log JWT tokens, cert material, or full telemetry payloads at info level.
+CloudWatch: EC2 CPU/disk, RDS, S3 4xx/5xx, MQTT reconnects, Go process logs (`LOG_FORMAT=json`). Do not log JWT tokens, cert material, or full telemetry payloads at info level.
 
 ## Network
 

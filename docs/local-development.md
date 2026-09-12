@@ -1,10 +1,12 @@
-# Local development (Phase 1 live path)
+# Local development (live path + upcoming CSV archive)
 
-This repository implements the **non-archival / live** path from `requirement.md` and `architecture.md`:
+This repository currently implements the **live** path from `requirement.md` and `architecture.md`:
 
 MQTT → Go backend (in-memory latest telemetry) → REST + WebSocket → React widgets.
 
-Export / Firehose / S3 history is **not implemented** in this phase. Those remain AWS-side concerns documented in `docs/aws-setup.md`.
+MVP also specifies: the **same Go MQTT subscription** writes CSV history to S3, and users with `can_export` get an Export button. That archive/export code is not in the live-path binary yet; follow `architecture.md` when implementing it.
+
+Do **not** use Firehose for MVP. Do **not** delete old S3 objects in MVP.
 
 ## Prerequisites
 
@@ -13,7 +15,7 @@ Export / Firehose / S3 history is **not implemented** in this phase. Those remai
 - PostgreSQL 16
 - An MQTT broker (local Mosquitto, or AWS IoT Core)
 
-Optional: Docker, if you prefer `docker compose up` for Postgres + Mosquitto.
+Optional: Docker, if you prefer `docker compose up` for Postgres + Mosquitto. For archive/export locally, an S3-compatible bucket (AWS S3 or MinIO) once that code lands.
 
 ## Configure
 
@@ -25,6 +27,8 @@ cp web/.env.example web/.env
 
 `AUTH_MODE=local` enables `POST /api/dev/login`. That endpoint must stay off in production (`AUTH_MODE=cognito`).
 
+When archive/export is implemented, set S3 bucket/region/prefix in `.env` (see `.env.example`). Leave AWS keys out of the browser.
+
 ## Database and seed
 
 Create database `iot` owned by user `iot`, then:
@@ -35,13 +39,13 @@ go run ./cmd/seed
 
 Seeded accounts (local auth only):
 
-| Email | Role | Export |
+| Email | Role | Export (`can_export`) |
 |---|---|---|
-| admin@example.com | `org_admin` | yes |
-| user@example.com | `org_user` | no |
+| admin@example.com | `org_admin` | yes — Export button visible |
+| user@example.com | `org_user` | no — Export button hidden |
 | ops@example.com | `platform_admin` | no |
 
-Org admins can add, edit, and remove users at **Users** in the UI (`GET/POST/PATCH/DELETE /api/users`). Access is Viewer or Admin; export is a `can_export` flag (CSV download is not implemented yet). The org `user_limit` is enforced. Local-mode users sign in with email only. Client admins cannot create `platform_admin`.
+Org admins can add, edit, and remove users at **Users** in the UI (`GET/POST/PATCH/DELETE /api/users`). Access is Viewer or Admin; **export is a separate `can_export` flag**. The Export control must appear only when that flag is true. The org `user_limit` is enforced. Local-mode users sign in with email only. Client admins cannot create `platform_admin`.
 
 `ops@example.com` opens the **operator console** (`/internal`): every organization, user emails and roles, locations, and device counts. Read-only.
 
@@ -52,6 +56,10 @@ Organization id: `00000000-0000-4000-8000-000000000001`
 MQTT topic example:
 
 `org/00000000-0000-4000-8000-000000000001/device/line-a-01/telemetry`
+
+Archive CSV prefix (when implemented):
+
+`org/{organization_id}/device/{device_identifier}/date={YYYY-MM-DD}/hour={HH}/`
 
 ## Run
 

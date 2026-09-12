@@ -1,20 +1,21 @@
 # IoT Live Feed
 
-Secure, multi-tenant live telemetry dashboard.
+Secure, multi-tenant live telemetry dashboard with CSV archive and export.
 
-**Hierarchy:** Organization → Location → Sub-location → Device  
-**Phase 1 (this PR):** non-archival live path only.
+**Hierarchy:** Organization → Location → Sub-location → Device
 
 ```
-Devices --MQTT/TLS QoS1--> AWS IoT Core --subscribe--> Go process (latest state in memory)
-                                              REST admin + WebSocket widgets
+Devices --MQTT/TLS QoS1--> AWS IoT Core --subscribe--> Go process
+                                              ├─ latest state in memory → WebSocket widgets
+                                              ├─ CSV rows → S3 archive
+                                              └─ REST admin + export (can_export)
 ```
-
-The archive path (IoT Rule → Firehose → S3, 3-month export) is specified in `architecture.md` but **is not implemented here**. The backend never writes historical archive data.
 
 Source of truth: `requirement.md`, `architecture.md`. Agent instructions: `agent-build-prompt.md`.
 
-## What shipped in Phase 1
+The Go MQTT subscriber is the archive path (not Firehose). Export is available only to users with `can_export`. MVP does not delete old S3 objects.
+
+## What shipped so far (live path)
 
 - PostgreSQL metadata: organizations, users, locations, sub-locations, devices
 - Cognito-compatible JWT auth (`user_id`, `organization_id`, `role`, `can_export`) plus local login for development
@@ -26,7 +27,9 @@ Source of truth: `requirement.md`, `architecture.md`. Agent instructions: `agent
 - Tests for tenant isolation, ACL, telemetry ingest, WebSocket auth
 - Local Mosquitto publisher and seed data
 
-**Not in Phase 1:** `POST/GET /api/exports`, export UI, Firehose worker, email invitations, per-device ACL, cert provisioning UI.
+**Specified for MVP, not in the live-path code yet:** MQTT → S3 CSV archive, `POST/GET /api/exports`, Export button (`can_export` only).
+
+**Deferred:** email invitations, per-device ACL, cert provisioning UI, S3 lifecycle/deletion, Firehose.
 
 ## Quick start
 
@@ -40,7 +43,7 @@ cd web && npm install && npm run dev
 go run ./cmd/pub
 ```
 
-Sign in at http://localhost:5173 as `admin@example.com` (client) or `ops@example.com` (operator console).
+Sign in at http://localhost:5173 as `admin@example.com` (client, `can_export`) or `ops@example.com` (operator console). `user@example.com` is a viewer without export.
 
 ## Implementation decisions (docs were silent)
 
@@ -58,6 +61,8 @@ These are required to have a working system; they do not add product features be
 | Device identifier after create | Immutable via API; recreate to change |
 | Location delete | Not exposed (API sketch is GET+POST only) |
 | SPA | Vite in `web/`; Go serves `web/dist` if present |
+| Archive | Same MQTT subscription writes batched CSV to S3 |
+| Export UI | Rendered only when JWT/`me.can_export` is true |
 
 ## Tests
 
