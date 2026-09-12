@@ -15,21 +15,20 @@ Source of truth: `requirement.md`, `architecture.md`. Agent instructions: `agent
 
 Phase 1 archive is the Go MQTT subscriber writing CSV to S3. **Firehose is delayed** to a later phase. Export is available only to users with `can_export`. Phase 1 does not delete old S3 objects.
 
-## What shipped so far (live path)
+## What shipped so far
 
-- PostgreSQL metadata: organizations, users, locations, sub-locations, devices
+- PostgreSQL metadata: organizations, users, locations, sub-locations, devices, export jobs
 - Cognito-compatible JWT auth (`user_id`, `organization_id`, `role`, `can_export`) plus local login for development
 - MQTT subscriber with reconnect, schema validation, device-table authorization
 - Concurrency-safe in-memory latest reading per device (no timer deletion, no `last_seen` column)
-- REST: health/ready, me, locations, sub-locations, admin device CRUD, admin user CRUD, internal org overview
+- Same MQTT subscription fans out to a CSV archive sink (local filesystem or S3)
+- REST: health/ready, me, locations, sub-locations, admin device CRUD, admin user CRUD, internal org overview, exports (`can_export`)
 - WebSocket: first-message JWT within 5s, org-scoped snapshot + live pushes
 - React UI: client live board + admin pages; operator console at `/internal`
-- Tests for tenant isolation, ACL, telemetry ingest, WebSocket auth
+- Tests for tenant isolation, ACL, telemetry ingest, WebSocket auth, archive CSV, export ACL
 - Local Mosquitto publisher and seed data
 
-**Specified for MVP, not in the live-path code yet:** MQTT → S3 CSV archive, `POST/GET /api/exports`, Export button (`can_export` only).
-
-**Deferred:** email invitations, per-device ACL, cert provisioning UI, S3 lifecycle/deletion, **Firehose (IoT Rule → S3)**.
+**Deferred:** email invitations, per-device ACL, cert provisioning UI, S3 lifecycle/deletion, Export UI button, **Firehose (IoT Rule → S3)**.
 
 ## Quick start
 

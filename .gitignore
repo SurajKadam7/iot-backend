@@ -40,6 +40,8 @@ bin/
 secrets/
 connect_device_package/
 backend-secrets/
+data/
+
 
 
 # Editor/IDE

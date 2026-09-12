@@ -36,7 +36,6 @@ func (m *mem) GetOrganization(_ context.Context, id uuid.UUID) (models.Organizat
 	}
 	return o, nil
 }
-func (m *mem) ListOrganizations(context.Context) ([]models.Organization, error) { return nil, nil }
 func (m *mem) GetUserBySubject(_ context.Context, sub string) (models.User, error) {
 	for _, u := range m.users {
 		if u.CognitoSubject == sub {
@@ -44,41 +43,6 @@ func (m *mem) GetUserBySubject(_ context.Context, sub string) (models.User, erro
 		}
 	}
 	return models.User{}, errNF
-}
-func (m *mem) GetUserByEmail(context.Context, string) (models.User, error) { return models.User{}, errNF }
-func (m *mem) GetUser(context.Context, uuid.UUID, uuid.UUID) (models.User, error) {
-	return models.User{}, errNF
-}
-func (m *mem) ListUsers(context.Context, uuid.UUID) ([]models.User, error) { return nil, nil }
-func (m *mem) ListAllUsers(context.Context) ([]models.User, error)         { return nil, nil }
-func (m *mem) CountUsers(context.Context, uuid.UUID) (int, error)          { return 0, nil }
-func (m *mem) CountActiveAdmins(context.Context, uuid.UUID) (int, error)   { return 0, nil }
-func (m *mem) CreateUser(context.Context, models.User) (models.User, error) {
-	return models.User{}, nil
-}
-func (m *mem) UpdateUser(context.Context, uuid.UUID, uuid.UUID, *string, *bool, *string) (models.User, error) {
-	return models.User{}, nil
-}
-func (m *mem) DeleteUser(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-func (m *mem) ListLocations(context.Context, uuid.UUID) ([]models.Location, error) {
-	return nil, nil
-}
-func (m *mem) ListAllLocations(context.Context) ([]models.Location, error) { return nil, nil }
-func (m *mem) CreateLocation(context.Context, uuid.UUID, string) (models.Location, error) {
-	return models.Location{}, nil
-}
-func (m *mem) GetLocation(context.Context, uuid.UUID, uuid.UUID) (models.Location, error) {
-	return models.Location{}, errNF
-}
-func (m *mem) ListSubLocations(context.Context, uuid.UUID, uuid.UUID) ([]models.SubLocation, error) {
-	return nil, nil
-}
-func (m *mem) ListAllSubLocations(context.Context) ([]models.SubLocation, error) { return nil, nil }
-func (m *mem) CreateSubLocation(context.Context, uuid.UUID, uuid.UUID, string) (models.SubLocation, error) {
-	return models.SubLocation{}, nil
-}
-func (m *mem) GetSubLocation(context.Context, uuid.UUID, uuid.UUID) (models.SubLocation, error) {
-	return models.SubLocation{}, errNF
 }
 func (m *mem) ListDevices(_ context.Context, orgID uuid.UUID) ([]models.Device, error) {
 	var out []models.Device
@@ -89,26 +53,14 @@ func (m *mem) ListDevices(_ context.Context, orgID uuid.UUID) ([]models.Device, 
 	}
 	return out, nil
 }
-func (m *mem) ListAllDevices(context.Context) ([]models.Device, error) { return nil, nil }
-func (m *mem) GetDevice(context.Context, uuid.UUID, uuid.UUID) (models.Device, error) {
-	return models.Device{}, errNF
-}
-func (m *mem) GetDeviceByIdentifier(context.Context, string) (models.Device, error) {
-	return models.Device{}, errNF
-}
-func (m *mem) CreateDevice(context.Context, models.Device) (models.Device, error) {
-	return models.Device{}, nil
-}
-func (m *mem) UpdateDevice(context.Context, uuid.UUID, uuid.UUID, *string, *string, **uuid.UUID) (models.Device, error) {
-	return models.Device{}, nil
-}
-func (m *mem) DeleteDevice(context.Context, uuid.UUID, uuid.UUID) error { return nil }
 
 type nf string
 
 func (e nf) Error() string { return string(e) }
 
 var errNF = nf("not found")
+
+var _ TenantLookup = (*mem)(nil)
 
 func TestWSRequiresAuthBeforeTelemetry(t *testing.T) {
 	orgA := uuid.New()

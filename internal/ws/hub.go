@@ -13,11 +13,19 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/surajkadam7/iot-backend/internal/auth"
 	"github.com/surajkadam7/iot-backend/internal/models"
-	"github.com/surajkadam7/iot-backend/internal/repository"
 	"github.com/surajkadam7/iot-backend/internal/state"
 )
 
 const authTimeout = 5 * time.Second
+
+// TenantLookup is the subset of persistence Hub needs. Keeping this small means
+// adding export jobs (or other tables) does not ripple into WebSocket tests.
+type TenantLookup interface {
+	GetUserByID(ctx context.Context, id uuid.UUID) (models.User, error)
+	GetUserBySubject(ctx context.Context, subject string) (models.User, error)
+	GetOrganization(ctx context.Context, id uuid.UUID) (models.Organization, error)
+	ListDevices(ctx context.Context, orgID uuid.UUID) ([]models.Device, error)
+}
 
 type inbound struct {
 	Type      string   `json:"type"`
@@ -28,7 +36,7 @@ type inbound struct {
 type Hub struct {
 	upgrader  websocket.Upgrader
 	validator *auth.Validator
-	repo      repository.Store
+	repo      TenantLookup
 	store     *state.Store
 	log       *slog.Logger
 
@@ -45,7 +53,7 @@ type client struct {
 	writeMu sync.Mutex
 }
 
-func NewHub(validator *auth.Validator, repo repository.Store, store *state.Store, origin string, log *slog.Logger) *Hub {
+func NewHub(validator *auth.Validator, repo TenantLookup, store *state.Store, origin string, log *slog.Logger) *Hub {
 	return &Hub{
 		validator: validator,
 		repo:      repo,

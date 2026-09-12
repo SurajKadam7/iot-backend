@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/surajkadam7/iot-backend/internal/models"
@@ -18,6 +19,7 @@ type memStore struct {
 	locs    map[uuid.UUID]models.Location
 	subs    map[uuid.UUID]models.SubLocation
 	devices map[uuid.UUID]models.Device
+	jobs    map[uuid.UUID]models.ExportJob
 }
 
 func newMemStore() *memStore {
@@ -27,6 +29,7 @@ func newMemStore() *memStore {
 		locs:    map[uuid.UUID]models.Location{},
 		subs:    map[uuid.UUID]models.SubLocation{},
 		devices: map[uuid.UUID]models.Device{},
+		jobs:    map[uuid.UUID]models.ExportJob{},
 	}
 }
 
@@ -383,3 +386,72 @@ func (m *memStore) DeleteDevice(_ context.Context, orgID, id uuid.UUID) error {
 	delete(m.devices, id)
 	return nil
 }
+
+func (m *memStore) CreateExportJob(_ context.Context, job models.ExportJob) (models.ExportJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if job.ID == uuid.Nil {
+		job.ID = uuid.New()
+	}
+	job.Status = models.ExportQueued
+	if job.DeviceIDs == nil {
+		job.DeviceIDs = []string{}
+	}
+	now := time.Now().UTC()
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = now
+	}
+	job.UpdatedAt = now
+	m.jobs[job.ID] = job
+	return job, nil
+}
+
+func (m *memStore) GetExportJob(_ context.Context, orgID, id uuid.UUID) (models.ExportJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	j, ok := m.jobs[id]
+	if !ok || j.OrganizationID != orgID {
+		return models.ExportJob{}, repository.ErrNotFound
+	}
+	return j, nil
+}
+
+func (m *memStore) ClaimNextExportJob(_ context.Context) (models.ExportJob, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var best models.ExportJob
+	found := false
+	for _, j := range m.jobs {
+		if j.Status != models.ExportQueued {
+			continue
+		}
+		if !found || j.CreatedAt.Before(best.CreatedAt) {
+			best = j
+			found = true
+		}
+	}
+	if !found {
+		return models.ExportJob{}, repository.ErrNotFound
+	}
+	best.Status = models.ExportRunning
+	best.UpdatedAt = time.Now().UTC()
+	m.jobs[best.ID] = best
+	return best, nil
+}
+
+func (m *memStore) FinishExportJob(_ context.Context, id uuid.UUID, status, objectKey, errorMessage string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	j, ok := m.jobs[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	j.Status = status
+	j.ObjectKey = objectKey
+	j.ErrorMessage = errorMessage
+	j.UpdatedAt = time.Now().UTC()
+	m.jobs[id] = j
+	return nil
+}
+
+var _ repository.Store = (*memStore)(nil)
