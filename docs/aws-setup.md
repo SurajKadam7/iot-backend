@@ -4,7 +4,7 @@ These notes describe how to host the MVP. **This repository does not create AWS 
 
 Certificate / Thing provisioning is **manual and out of scope** for the app.
 
-Archive is **not Firehose**. The Go process subscribes to MQTT and writes CSV to S3. MVP does **not** expire or delete old archive objects.
+Phase 1 archive is **not Firehose**. The Go process subscribes to MQTT and writes CSV to S3. **Firehose (IoT Rule → S3) is delayed** to a later phase. Phase 1 does **not** expire or delete old archive objects.
 
 ## First live AWS test (laptop → IoT Core → EC2 → UI)
 
@@ -200,7 +200,7 @@ One Go process:
 - REST (`/api/health`, `/api/ready`, `/api/me`, locations, devices, users, exports)
 - WebSocket `/ws` with first-message JWT auth (5s timeout)
 
-Put the binary on a single EC2 instance with a public HTTPS endpoint (or serve the UI from CloudFront and API from the instance). Architecture forbids ALB/Redis/DynamoDB/Kinesis Data Streams/Firehose/SQS archive workers for MVP.
+Put the binary on a single EC2 instance with a public HTTPS endpoint (or serve the UI from CloudFront and API from the instance). Phase 1 forbids ALB/Redis/DynamoDB/Kinesis Data Streams/SQS archive workers. **Firehose is delayed** — do not configure it for Phase 1.
 
 ## PostgreSQL / RDS
 
@@ -246,7 +246,7 @@ After EC2 restart, in-memory state is empty until the next publish. CSV archive 
 
 ## Archive path (Go MQTT → S3 CSV)
 
-The backend subscriber writes CSV after a valid ingest. Do **not** configure IoT Rule → Firehose for MVP.
+The backend subscriber writes CSV after a valid ingest. **Do not configure IoT Rule → Firehose in Phase 1** (that path is delayed).
 
 ```
 MQTT org/+/device/+/telemetry

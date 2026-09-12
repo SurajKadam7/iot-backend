@@ -5,7 +5,7 @@ Read both files first and treat them as the source of truth. Inspect the existin
 ## Goal
 Build a secure, multi-tenant IoT live-feed web application:
 Organization → Location → Sub-location → Device (UI: scrollable live widgets).
-~50 devices / ~50 msg/s. Go backend on EC2: **one MQTT subscription** for live in-memory state **and** CSV archive to S3; REST for admin/export; WebSocket for live readings. Archive prefix `org/{orgId}/device/{deviceId}/date=...`. Fixed telemetry schema. Simple org ACL. Single org per user. No Firehose. Do not implement S3 object deletion/lifecycle for MVP.
+~50 devices / ~50 msg/s. Go backend on EC2: **one MQTT subscription** for live in-memory state **and** CSV archive to S3; REST for admin/export; WebSocket for live readings. Archive prefix `org/{orgId}/device/{deviceId}/date=...`. Fixed telemetry schema. Simple org ACL. Single org per user. **Firehose is delayed past Phase 1 — do not build it.** Do not implement S3 object deletion/lifecycle for Phase 1.
 
 ## Implementation requirements
 - Backend: Go. Idiomatic layout, context, structured logging, graceful shutdown, env config, tests for authz/state.
@@ -20,10 +20,10 @@ Organization → Location → Sub-location → Device (UI: scrollable live widge
 - WebSocket: WSS; **first-message JWT auth** with ≤5s timeout; no telemetry until authenticated; bind connection to org; push org-scoped updates/snapshots.
 - Frontend: React + TypeScript unless stack already exists. Login, scrollable live widgets (temperature/pressure/humidity), admin device management. **Export button/page only if `can_export`.** No AWS credentials in browser.
 - Export: async job, read only caller’s S3 org prefixes, stream CSV, pre-signed download. Requires `can_export`. Hide the control otherwise.
-- Historical ingestion: **Go MQTT subscriber writes CSV to S3.** Do not use Firehose, IoT Rule archive, SQS, or Kinesis.
+- Historical ingestion (Phase 1): **Go MQTT subscriber writes CSV to S3.** Do not implement Firehose / IoT Rule archive, SQS, or Kinesis. Firehose is a later phase.
 - Device certificate/Thing provisioning: out of scope (document manual setup).
 - Security: TLS, validation, least privilege, no secrets in git, no sensitive logs.
-- Cost discipline: no Redis/DynamoDB/Kinesis Data Streams/OpenSearch/Kubernetes/ALB/SQS/Firehose unless required by the two docs.
+- Cost discipline: no Redis/DynamoDB/Kinesis Data Streams/OpenSearch/Kubernetes/ALB/SQS/Firehose in Phase 1 unless required by the two docs. Firehose remains delayed.
 
 ## Data model
 Implement MVP tables/constraints/indexes/migrations from `architecture.md`. Unique `device_identifier`. No invitations migration for MVP.
@@ -42,7 +42,7 @@ Implement MVP tables/constraints/indexes/migrations from `architecture.md`. Uniq
 4. Tests for tenant isolation, ACL, state updates, key API/WS auth behavior, export ACL.
 5. `.env.example` with no secrets.
 6. Local development instructions.
-7. AWS setup notes: EC2, IoT Core, S3 archive/export prefixes, PostgreSQL/RDS, Cognito claim mapping, CloudFront, Route 53, ACM, CloudWatch; note cert provisioning is manual. Do not require Firehose.
+7. AWS setup notes: EC2, IoT Core, S3 archive/export prefixes, PostgreSQL/RDS, Cognito claim mapping, CloudFront, Route 53, ACM, CloudWatch; note cert provisioning is manual. Document Firehose as delayed, not required for Phase 1.
 8. Keep `requirement.md` and `architecture.md`; update only for necessary corrections and call them out.
 9. Do not claim AWS resources are deployed unless verified.
 

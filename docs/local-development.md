@@ -6,7 +6,7 @@ MQTT → Go backend (in-memory latest telemetry) → REST + WebSocket → React 
 
 MVP also specifies: the **same Go MQTT subscription** writes CSV history to S3, and users with `can_export` get an Export button. That archive/export code is not in the live-path binary yet; follow `architecture.md` when implementing it.
 
-Do **not** use Firehose for MVP. Do **not** delete old S3 objects in MVP.
+**Firehose is delayed** past Phase 1. Do **not** delete old S3 objects in Phase 1.
 
 ## Prerequisites
 

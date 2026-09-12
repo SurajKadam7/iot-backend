@@ -1,13 +1,14 @@
 # Architecture
 
-## Design choice (MVP)
+## Design choice (Phase 1)
 
 | Path | Purpose | Durability if backend is down |
 |---|---|---|
 | MQTT → Go backend | Live latest state + WebSocket widgets | Best-effort (memory cleared on process restart) |
-| MQTT → Go backend → S3 CSV | Historical archive + exports | **Pauses** until the subscriber is back |
+| MQTT → Go backend → S3 CSV | Phase 1 historical archive + exports | **Pauses** until the subscriber is back |
+| IoT Rule → Firehose → S3 | Later-phase durable archive | **Yes** — independent of EC2 (**delayed**, not in Phase 1) |
 
-**MVP load:** ~50 devices × ~1 event/s ≈ **50 msg/s**. The Go MQTT subscription is both the live path and the archive path. Firehose / IoT Rule archive is **not** used for MVP. Deleting old S3 objects is **out of scope**.
+**Phase 1 load:** ~50 devices × ~1 event/s ≈ **50 msg/s**. The Go MQTT subscription is both the live path and the archive path. **Firehose is delayed** until a later phase. Deleting old S3 objects is **out of scope** for Phase 1.
 
 ## High-level flow
 
@@ -182,7 +183,19 @@ Deferred: email invitation APIs, per-device ACL APIs.
 - S3 bucket for archive CSV + export files; EC2 IAM: `s3:PutObject` on archive prefix, `s3:GetObject`/`ListBucket` for export jobs, `s3:PutObject` on export prefix
 - Frontend S3 + CloudFront; Route 53; ACM; CloudWatch
 - Device cert/Thing provisioning: manual/out of band for MVP
-- No ALB/Redis/DynamoDB/Kinesis Data Streams/Firehose/SQS archive path
+- No ALB/Redis/DynamoDB/Kinesis Data Streams/SQS archive path
+- **Firehose delayed:** do not configure IoT Rule → Firehose in Phase 1
+
+## Later phase (delayed): Firehose archive
+When Firehose is added, IoT Core should fan out independently of EC2:
+
+```text
+AWS IoT Core
+  ├─ MQTT subscribe → Go (live + Phase 1 CSV, until retired)
+  └─ IoT Rule → Firehose → S3  (archive continues if EC2 is down)
+```
+
+Phase 1 must not require that path.
 
 ## Scaling path
-`ALB → multiple Go instances` for API/WS when needed; keep a **single active MQTT subscriber** (live + archive) or redesign fan-out carefully so CSV is not duplicated.
+`ALB → multiple Go instances` for API/WS when needed; keep a **single active MQTT subscriber** (live + archive) or redesign fan-out carefully so CSV is not duplicated. Keep a future Firehose path independent of extra API instances.

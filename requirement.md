@@ -26,7 +26,7 @@ MVP UI may present devices as a **scrollable live widget board** (optionally fil
 2. Go backend on EC2 **subscribes** to IoT Core on `org/+/device/+/telemetry`.
 3. For each valid message the backend:
    - overwrites **latest telemetry in memory** for the live dashboard (no timer-delete; no DynamoDB/Redis/time-series; no `last_seen` DB column — UI uses in-memory timestamp);
-   - **appends the reading as CSV to S3** (same process, same subscription). Do not use Firehose or an IoT Rule archive path for MVP.
+   - **appends the reading as CSV to S3** (same process, same subscription). **Phase 1 delays the Firehose path** (IoT Rule → Firehose → S3).
 4. After backend restart, memory is empty until the next MQTT message; UI shows **“Waiting for device to publish…”** until data arrives. CSV archive also pauses until the process is up again and receiving MQTT.
 5. Backend exposes REST APIs for auth/me, admin device (and location) management, and exports.
 6. Frontend shows live readings (temperature, pressure, etc.) over **WebSocket** as scrollable widgets — not REST polling.
@@ -67,8 +67,8 @@ Buffer/batch lines into objects (do not require one S3 object per MQTT message).
 ## Durability & cost goals
 - Live UI may show waiting/stale after backend restart until the next publish.
 - CSV archive is written by the same Go MQTT subscriber. If the process is down, new history is not stored until it reconnects.
-- Keep MVP simple for ~50 devices @ ~50 msg/s.
-- No Amazon Data Firehose, Kinesis, or SQS archive worker for MVP.
+- Keep Phase 1 simple for ~50 devices @ ~50 msg/s.
+- **Amazon Data Firehose is delayed** (not in Phase 1). Do not add Kinesis or an SQS archive worker in Phase 1.
 
 ## Non-functional
 - Secure MQTT device authentication with X.509 certificates (provisioning of certs/Things is **out of scope** for the app MVP — configured outside the product).
@@ -82,4 +82,4 @@ Buffer/batch lines into objects (do not require one S3 object per MQTT message).
 - Analytics, historical query DBs, alerts, Redis, DynamoDB, Kinesis Data Streams, SQS archive workers, Kubernetes, multi-instance HA (unless required later).
 - Per-device ACL, email invitations, multi-org users, IoT certificate/Thing provisioning UI/APIs.
 - Automatic deletion / lifecycle expiry of old S3 archive objects.
-- Amazon Data Firehose (not used for MVP archive).
+- **Amazon Data Firehose** (IoT Rule → Firehose → S3). Delayed past Phase 1; intended later so archive can continue when the Go process is down.

@@ -13,7 +13,7 @@ Devices --MQTT/TLS QoS1--> AWS IoT Core --subscribe--> Go process
 
 Source of truth: `requirement.md`, `architecture.md`. Agent instructions: `agent-build-prompt.md`.
 
-The Go MQTT subscriber is the archive path (not Firehose). Export is available only to users with `can_export`. MVP does not delete old S3 objects.
+Phase 1 archive is the Go MQTT subscriber writing CSV to S3. **Firehose is delayed** to a later phase. Export is available only to users with `can_export`. Phase 1 does not delete old S3 objects.
 
 ## What shipped so far (live path)
 
@@ -29,7 +29,7 @@ The Go MQTT subscriber is the archive path (not Firehose). Export is available o
 
 **Specified for MVP, not in the live-path code yet:** MQTT → S3 CSV archive, `POST/GET /api/exports`, Export button (`can_export` only).
 
-**Deferred:** email invitations, per-device ACL, cert provisioning UI, S3 lifecycle/deletion, Firehose.
+**Deferred:** email invitations, per-device ACL, cert provisioning UI, S3 lifecycle/deletion, **Firehose (IoT Rule → S3)**.
 
 ## Quick start
 
