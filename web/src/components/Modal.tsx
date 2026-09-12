@@ -18,22 +18,26 @@ export function Modal({
   }, [onClose]);
 
   return (
-    <div className="modal-back" role="presentation" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-head">
-          <h2 id="modal-title">{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        {children}
+    <dialog className="modal modal-open" aria-labelledby="modal-title" aria-modal="true">
+      <div className="modal-box">
+        <button
+          type="button"
+          className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          ✕
+        </button>
+        <h3 id="modal-title" className="pr-8 text-lg font-bold text-pretty">
+          {title}
+        </h3>
+        <div className="mt-4">{children}</div>
       </div>
-    </div>
+      <form method="dialog" className="modal-backdrop">
+        <button type="button" onClick={onClose}>
+          close
+        </button>
+      </form>
+    </dialog>
   );
 }

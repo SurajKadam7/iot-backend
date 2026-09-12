@@ -1,42 +1,23 @@
-import { NavLink, Outlet } from "react-router-dom";
 import type { Me } from "../types";
-import { Brand } from "./Brand";
+import { Shell } from "./Shell";
 
 export function AppShell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   return (
-    <div className="app">
-      <a className="skip" href="#main">
-        Skip to content
-      </a>
-      <aside className="sidebar" aria-label="Primary">
-        <Brand subtitle={me.organization_name} />
-        <nav className="nav">
-          <NavLink to="/" end>
-            Live board
-          </NavLink>
-          {me.role === "org_admin" && (
-            <>
-              <NavLink to="/devices">Devices</NavLink>
-              <NavLink to="/locations">Locations</NavLink>
-              <NavLink to="/users">Users</NavLink>
-            </>
-          )}
-        </nav>
-        <div className="sidebar-foot">
-          <div className="who">
-            <span className="who-email" title={me.email}>
-              {me.email}
-            </span>
-            <span className="pill">{me.role === "org_admin" ? "Admin" : "Viewer"}</span>
-          </div>
-          <button type="button" className="btn ghost full" onClick={onLogout}>
-            Sign out
-          </button>
-        </div>
-      </aside>
-      <main id="main" className="main">
-        <Outlet context={me} />
-      </main>
-    </div>
+    <Shell
+      me={me}
+      subtitle={me.organization_name}
+      nav={[
+        { to: "/", label: "Live board", end: true },
+        ...(me.role === "org_admin"
+          ? [
+              { to: "/devices", label: "Devices" },
+              { to: "/locations", label: "Locations" },
+              { to: "/users", label: "Users" },
+            ]
+          : []),
+      ]}
+      roleLabel={me.role === "org_admin" ? "Admin" : "Viewer"}
+      onLogout={onLogout}
+    />
   );
 }

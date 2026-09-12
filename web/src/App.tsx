@@ -63,8 +63,8 @@ export function App() {
 
   if (boot) {
     return (
-      <div className="boot">
-        <div className="spinner" aria-label="Loading" />
+      <div className="grid min-h-screen place-items-center">
+        <span className="loading loading-spinner loading-lg text-primary" aria-label="Loading" />
       </div>
     );
   }

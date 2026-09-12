@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
+import { EmptyState } from "../components/EmptyState";
 import { Modal } from "../components/Modal";
+import { PageHeader } from "../components/PageHeader";
 import type { Me, OrgUser, Role } from "../types";
 
 export function Users() {
@@ -72,103 +74,105 @@ export function Users() {
   }
 
   return (
-    <section className="page">
-      <header className="page-head">
-        <div className="page-copy">
-          <h1>Users</h1>
-          <p className="muted">
-            Add people in this organization. Viewers see the live board. Admins also manage devices, locations, and
-            users. Export permission is stored now; CSV download comes later.
-          </p>
-        </div>
-        <button className="btn primary" type="button" onClick={startCreate}>
-          Add user
-        </button>
-      </header>
+    <section className="flex flex-col gap-5">
+      <PageHeader
+        title="Users"
+        description="Add people in this organization. Viewers see the live board. Admins also manage devices, locations, and users. Export permission is stored now; CSV download comes later."
+        actions={
+          <button className="btn btn-primary" type="button" onClick={startCreate}>
+            Add user
+          </button>
+        }
+      />
       {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
+        <div role="alert" className="alert alert-error alert-soft">
+          <span>{error}</span>
+        </div>
       )}
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Access</th>
-              <th>Export</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => {
-              const self = u.id === me.user_id;
-              return (
-                <tr key={u.id}>
-                  <td data-label="Email" title={u.email}>
-                    {u.email}
-                    {self ? " (you)" : ""}
-                  </td>
-                  <td data-label="Access">
-                    <span className={`pill ${u.role === "org_admin" ? "admin" : ""}`}>
-                      {u.role === "org_admin" ? "Admin" : "Viewer"}
-                    </span>
-                  </td>
-                  <td data-label="Export">
-                    <span className={`pill ${u.can_export ? "export" : ""}`}>{u.can_export ? "Allowed" : "View only"}</span>
-                  </td>
-                  <td data-label="Status">
-                    <span className={`pill ${u.status}`}>{u.status}</span>
-                  </td>
-                  <td className="row-actions" data-label="Actions">
-                    <button type="button" className="btn ghost" onClick={() => startEdit(u)}>
-                      Edit
-                    </button>
-                    {!self && (
-                      <button
-                        type="button"
-                        className="btn ghost danger"
-                        onClick={() => {
-                          setActive(u);
-                          setOpen("delete");
-                        }}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {users.length === 0 && (
+      {users.length === 0 ? (
+        <EmptyState title="No users yet">Add a teammate so they can sign in to this organization.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+          <table className="table">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  No users yet.
-                </td>
+                <th>Email</th>
+                <th>Access</th>
+                <th>Export</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const self = u.id === me.user_id;
+                return (
+                  <tr key={u.id}>
+                    <td className="font-medium" title={u.email}>
+                      {u.email}
+                      {self ? <span className="text-base-content/60"> (you)</span> : ""}
+                    </td>
+                    <td>
+                      <span className={`badge badge-soft ${u.role === "org_admin" ? "badge-info" : ""}`}>
+                        {u.role === "org_admin" ? "Admin" : "Viewer"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-soft ${u.can_export ? "badge-success" : ""}`}>
+                        {u.can_export ? "Allowed" : "View only"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge badge-soft ${u.status === "active" ? "badge-success" : ""}`}>
+                        {u.status}
+                      </span>
+                    </td>
+                    <td className="text-end">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
+                          Edit
+                        </button>
+                        {!self && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-error btn-sm"
+                            onClick={() => {
+                              setActive(u);
+                              setOpen("delete");
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {(open === "create" || open === "edit") && (
         <Modal title={open === "create" ? "Add user" : "Edit user"} onClose={() => setOpen(null)}>
-          <form className="stack" onSubmit={onSubmit}>
-            <label>
-              Email
+          <form className="flex flex-col gap-3" onSubmit={onSubmit}>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Email</legend>
               <input
                 type="email"
+                className="input w-full"
                 required
                 disabled={open === "edit"}
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 autoComplete="off"
               />
-            </label>
-            <label>
-              Access
+            </fieldset>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Access</legend>
               <select
+                className="select w-full"
                 value={form.role}
                 disabled={open === "edit" && active?.id === me.user_id}
                 onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
@@ -176,23 +180,27 @@ export function Users() {
                 <option value="org_user">Viewer — live board only</option>
                 <option value="org_admin">Admin — manage devices, locations, and users</option>
               </select>
-            </label>
-            <label className="check">
+            </fieldset>
+            <label className="label cursor-pointer items-start justify-start gap-3 py-2">
               <input
                 type="checkbox"
+                className="checkbox mt-0.5"
                 checked={form.can_export}
                 onChange={(e) => setForm({ ...form, can_export: e.target.checked })}
               />
-              <span className="check-copy">
+              <span>
                 Allow export
-                <span className="muted">Grants can_export. Historical CSV download is not available yet.</span>
+                <span className="block text-sm text-base-content/60">
+                  Grants can_export. Historical CSV download is not available yet.
+                </span>
               </span>
             </label>
-            <div className="modal-actions">
-              <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+            <div className="modal-action">
+              <button type="button" className="btn btn-ghost" onClick={() => setOpen(null)}>
                 Cancel
               </button>
-              <button className="btn primary" disabled={busy}>
+              <button className="btn btn-primary" disabled={busy}>
+                {busy ? <span className="loading loading-spinner"></span> : null}
                 {busy ? "Saving…" : "Save"}
               </button>
             </div>
@@ -205,11 +213,12 @@ export function Users() {
           <p>
             Remove <strong>{active.email}</strong> from this organization? They will no longer be able to sign in.
           </p>
-          <div className="modal-actions">
-            <button type="button" className="btn ghost" onClick={() => setOpen(null)}>
+          <div className="modal-action">
+            <button type="button" className="btn btn-ghost" onClick={() => setOpen(null)}>
               Cancel
             </button>
-            <button type="button" className="btn danger" disabled={busy} onClick={() => void onDelete()}>
+            <button type="button" className="btn btn-error" disabled={busy} onClick={() => void onDelete()}>
+              {busy ? <span className="loading loading-spinner"></span> : null}
               {busy ? "Removing…" : "Remove"}
             </button>
           </div>
